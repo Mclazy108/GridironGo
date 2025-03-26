@@ -4,6 +4,36 @@ GridironGo is a Fantasy Football CLI app built in Go using the [Bubble Tea](http
 
 ## Project Structure
 
+```
+.
+├── assets
+├── go.mod
+├── go.sum
+├── internals
+│   ├── data
+│   │   ├── db.go
+│   │   ├── models.go
+│   │   └── scrape.go
+│   ├── league
+│   │   ├── league.go
+│   │   ├── rules.go
+│   │   ├── schedule.go
+│   │   └── team.go
+│   ├── rules
+│   │   ├── draft.go
+│   │   └── scoring.go
+│   └── tui
+│       ├── league_menu.go
+│       ├── menu.go
+│       ├── player_menu.go
+│       └── schedule_menu.go
+├── LICENSE
+├── main.go
+└── README.md
+```
+
+### File Descriptions
+
 - **`assets/`**: Directory for static assets like JSON data, logos, or templates.
 - **`go.mod`**: Defines the module name and dependencies for the Go project.
 - **`go.sum`**: Locks dependency versions to ensure reproducible builds.
