@@ -13,7 +13,8 @@ GridironGo is a Fantasy Football CLI app built in Go using the [Bubble Tea](http
 │   │   ├── models.go           # Defines the data models for players, teams, and matches
 │   │   ├── scrape.go           # Scrapes football stats and schedules for the last 3 seasons
 │   │   └── queries             # Directory for SQL queries used by sqlc
-│   │       ├── schema.sql      # Database schema definition with tables and indexes
+│   │       ├── migrations      # SQL scripts for schema creation and migrations
+│   │       │   └── schema.sql  # Database schema definition with tables and indexes
 │   │       ├── player.sql      # Player-related queries (stats, fantasy points, searching)
 │   │       ├── team.sql        # Team management queries (roster, standings, updates)
 │   │       ├── league.sql      # League operations queries (rules, matchups, settings)
@@ -77,8 +78,9 @@ The application uses SQLite with sqlc for type-safe database operations. Key tab
 ## Getting Started
 1. Clone the repo
 2. Run `go mod tidy` to install dependencies
-3. Run `sqlc generate` to generate database code
-4. Run `go run main.go` to launch the TUI
+3. Create a `migrations` directory under `internals/data/queries` and place `schema.sql` there
+4. Run `sqlc generate` to generate database code
+5. Run `go run main.go` to launch the TUI
 
 ## License
 MIT
