@@ -10,17 +10,27 @@ GridironGo is a Fantasy Football CLI app built in Go using the [Bubble Tea](http
 ├── internals                   # Contains core application logic split into sub-packages
 │   ├── data
 │   │   ├── db.go               # Handles SQLite database connections and queries
+│   │   ├── migrations          # Directory for SQL migrations
+│   │   │   └── schema.sql      # Database schema definition with tables and indexes
 │   │   ├── models.go           # Defines the data models for players, teams, and matches
+│   │   ├── queries             # Directory for SQL queries used by sqlc
+│   │   │   ├── draft.sql       # Draft functionality queries (picks, available players, tracking)
+│   │   │   ├── league.sql      # League operations queries (rules, matchups, settings)
+│   │   │   ├── player.sql      # Player-related queries (stats, fantasy points, searching)
+│   │   │   ├── score.sql       # Scoring system queries (weekly scores, standings updates)
+│   │   │   ├── season.sql      # Season data queries (schedules, games, tracking progress)
+│   │   │   └── team.sql        # Team management queries (roster, standings, updates)
 │   │   ├── scrape.go           # Scrapes football stats and schedules for the last 3 seasons
-│   │   └── queries             # Directory for SQL queries used by sqlc
-│   │       ├── migrations      # SQL scripts for schema creation and migrations
-│   │       │   └── schema.sql  # Database schema definition with tables and indexes
-│   │       ├── player.sql      # Player-related queries (stats, fantasy points, searching)
-│   │       ├── team.sql        # Team management queries (roster, standings, updates)
-│   │       ├── league.sql      # League operations queries (rules, matchups, settings)
-│   │       ├── season.sql      # Season data queries (schedules, games, tracking progress)
-│   │       ├── draft.sql       # Draft functionality queries (picks, available players, tracking)
-│   │       └── score.sql       # Scoring system queries (weekly scores, standings updates)
+│   │   └── sqlc                # Generated SQL code by sqlc
+│   │       ├── db.go           # Database connection and query execution
+│   │       ├── draft.sql.go    # Generated code for draft queries
+│   │       ├── league.sql.go   # Generated code for league queries
+│   │       ├── models.go       # Generated data models
+│   │       ├── player.sql.go   # Generated code for player queries
+│   │       ├── querier.go      # Interface defining all available queries
+│   │       ├── score.sql.go    # Generated code for score queries
+│   │       ├── season.sql.go   # Generated code for season queries
+│   │       └── team.sql.go     # Generated code for team queries
 │   ├── league
 │   │   ├── league.go           # Manages fantasy league setup and operations
 │   │   ├── rules.go            # Handles league rules including scoring and configurations
@@ -78,9 +88,8 @@ The application uses SQLite with sqlc for type-safe database operations. Key tab
 ## Getting Started
 1. Clone the repo
 2. Run `go mod tidy` to install dependencies
-3. Create a `migrations` directory under `internals/data/queries` and place `schema.sql` there
-4. Run `sqlc generate` to generate database code
-5. Run `go run main.go` to launch the TUI
+3. Run `sqlc generate` to generate database code
+4. Run `go run main.go` to launch the TUI
 
 ## License
 MIT
