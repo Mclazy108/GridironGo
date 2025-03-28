@@ -9,7 +9,7 @@ GridironGo is a Fantasy Football CLI app built in Go using the [Bubble Tea](http
 ├── go.sum                      # Locks dependency versions to ensure reproducible builds
 ├── internals                   # Contains core application logic split into sub-packages
 │   ├── data
-│   │   ├── db.go               # Handles SQLite database connections and queries
+│   │   ├── database.go         # Handles SQLite database connections and queries
 │   │   ├── migrations          # Directory for SQL migrations
 │   │   │   └── schema.sql      # Database schema definition with tables and indexes
 │   │   ├── models.go           # Defines the data models for players, teams, and matches

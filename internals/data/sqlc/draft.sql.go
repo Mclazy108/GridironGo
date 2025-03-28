@@ -3,7 +3,7 @@
 //   sqlc v1.28.0
 // source: draft.sql
 
-package data
+package sqlc
 
 import (
 	"context"

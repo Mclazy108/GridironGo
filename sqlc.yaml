@@ -11,7 +11,7 @@ sql:
     engine: "sqlite"
     gen:
       go:
-        package: "data"
+        package: "sqlc"
         out: "internals/data/sqlc"
         emit_empty_slices: true
         emit_json_tags: true

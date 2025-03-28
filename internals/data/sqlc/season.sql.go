@@ -3,7 +3,7 @@
 //   sqlc v1.28.0
 // source: season.sql
 
-package data
+package sqlc
 
 import (
 	"context"
