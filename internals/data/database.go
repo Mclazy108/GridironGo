@@ -28,8 +28,30 @@ type DBConfig struct {
 }
 
 func DefaultDBConfig(dbPath string) DBConfig {
+	// If no path is specified, use GridironGo.db in the executable's directory
+	if dbPath == "" {
+		// Get the executable's directory
+		exePath, err := os.Executable()
+		if err == nil {
+			// Use the directory of the executable
+			exeDir := filepath.Dir(exePath)
+			// Go to the parent directory (assuming executables is a subdirectory)
+			parentDir := filepath.Dir(exeDir)
+			// If the parent directory contains build.sh, use that (root directory)
+			if _, err := os.Stat(filepath.Join(parentDir, "build.sh")); err == nil {
+				dbPath = filepath.Join(parentDir, "GridironGo.db")
+			} else {
+				// Otherwise just use the current directory
+				dbPath = "./GridironGo.db"
+			}
+		} else {
+			// Fallback to the current directory if we can't determine the executable path
+			dbPath = "./GridironGo.db"
+		}
+	}
+
 	return DBConfig{
-		Path:            "./GridironGo.db", // Changed from "./data.db"
+		Path:            dbPath,
 		ForeignKeys:     true,
 		JournalMode:     "WAL",
 		BusyTimeout:     5000,
