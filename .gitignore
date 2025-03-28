@@ -1,4 +1,6 @@
 planning.txt
 *.DS_Store
 *.db
+*.db-wal
+*.db-shm
 executables/
