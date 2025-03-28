@@ -1,2 +1,4 @@
 planning.txt
 *.DS_Store
+*.db
+executables/

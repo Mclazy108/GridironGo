@@ -5,6 +5,7 @@ GridironGo is a Fantasy Football CLI app built in Go using the [Bubble Tea](http
 ```
 .
 ├── assets                      # Directory for static assets like JSON data, logos, or templates
+├── build.sh                    # Script to build executables for different platforms
 ├── go.mod                      # Defines the module name and dependencies for the Go project
 ├── go.sum                      # Locks dependency versions to ensure reproducible builds
 ├── internals                   # Contains core application logic split into sub-packages
@@ -12,7 +13,6 @@ GridironGo is a Fantasy Football CLI app built in Go using the [Bubble Tea](http
 │   │   ├── database.go         # Handles SQLite database connections and queries
 │   │   ├── migrations          # Directory for SQL migrations
 │   │   │   └── schema.sql      # Database schema definition with tables and indexes
-│   │   ├── models.go           # Defines the data models for players, teams, and matches
 │   │   ├── queries             # Directory for SQL queries used by sqlc
 │   │   │   ├── draft.sql       # Draft functionality queries (picks, available players, tracking)
 │   │   │   ├── league.sql      # League operations queries (rules, matchups, settings)
@@ -46,8 +46,8 @@ GridironGo is a Fantasy Football CLI app built in Go using the [Bubble Tea](http
 │       └── schedule_menu.go    # TUI logic for viewing the real and fantasy schedules
 ├── LICENSE                     # Project license file
 ├── main.go                     # Entry point for the application. Initializes TUI and loads data
-├── sqlc.yaml                   # Configuration file for sqlc code generation
-└── README.md                   # Project documentation and setup instructions
+├── README.md                   # Project documentation and setup instructions
+└── sqlc.yaml                   # Configuration file for sqlc code generation
 ```
 
 ## Database Schema
@@ -87,9 +87,44 @@ The application uses SQLite with sqlc for type-safe database operations. Key tab
 
 ## Getting Started
 1. Clone the repo
-2. Run `go mod tidy` to install dependencies
-3. Run `sqlc generate` to generate database code
-4. Run `go run main.go` to launch the TUI
+   ```bash
+   git clone https://github.com/Mclazy108/GridironGo.git
+   cd GridironGo
+   ```
+
+2. Install dependencies
+   ```bash
+   go mod tidy
+   ```
+
+3. Generate SQLc code (if you've made changes to SQL queries)
+   ```bash
+   sqlc generate
+   ```
+
+4. Run the application
+   ```bash
+   go run main.go
+   ```
+
+5. Or build the application for your platform
+   ```bash
+   go build -o GridironGo
+   ```
+
+## Building Executables
+The project includes a build script that creates executables for multiple platforms:
+
+```bash
+# Make the build script executable
+chmod +x build.sh
+
+# Run the build script
+./build.sh
+```
+
+This will create executables for Linux, macOS, and Windows in the `executables` directory.
+
 
 ## License
 MIT
