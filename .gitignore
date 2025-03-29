@@ -4,3 +4,4 @@ planning.txt
 *.db-wal
 *.db-shm
 executables/
+scrape.log
