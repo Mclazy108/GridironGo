@@ -120,6 +120,7 @@ func NewDB(config *DBConfig) (*DB, error) {
 	}, nil
 }
 
+/*
 // tablesExist checks if the database schema has already been applied
 func tablesExist(db *sql.DB) (bool, error) {
 	// Check for the existence of one of your tables
@@ -130,20 +131,24 @@ func tablesExist(db *sql.DB) (bool, error) {
 	}
 	return count > 0, nil
 }
+*/
 
 // applyMigrations applies all SQL migrations in the migrations directory
 func applyMigrations(db *sql.DB) error {
 	// Check if tables already exist
-	exists, err := tablesExist(db)
-	if err != nil {
-		return fmt.Errorf("failed to check if tables exist: %w", err)
-	}
+	/*
+		exists, err := tablesExist(db)
+		if err != nil {
+			return fmt.Errorf("failed to check if tables exist: %w", err)
+		}
 
-	// Skip migrations if tables already exist
-	if exists {
-		log.Println("Database schema already exists, skipping migrations")
-		return nil
-	}
+
+		// Skip migrations if tables already exist
+		if exists {
+			log.Println("Database schema already exists, skipping migrations")
+			return nil
+		}
+	*/
 
 	// Get migrations from embedded filesystem
 	migrations, err := migrationFS.ReadDir("migrations")
