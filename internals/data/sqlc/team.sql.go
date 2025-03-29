@@ -565,6 +565,33 @@ func (q *Queries) GetTeamsByDivision(ctx context.Context, division string) ([]*N
 	return items, nil
 }
 
+const insertTeam = `-- name: InsertTeam :one
+INSERT INTO nfl_teams (name, city, abbreviation, conference, division)
+VALUES (?, ?, ?, ?, ?)
+RETURNING id
+`
+
+type InsertTeamParams struct {
+	Name         string `json:"name"`
+	City         string `json:"city"`
+	Abbreviation string `json:"abbreviation"`
+	Conference   string `json:"conference"`
+	Division     string `json:"division"`
+}
+
+func (q *Queries) InsertTeam(ctx context.Context, arg InsertTeamParams) (int64, error) {
+	row := q.queryRow(ctx, q.insertTeamStmt, insertTeam,
+		arg.Name,
+		arg.City,
+		arg.Abbreviation,
+		arg.Conference,
+		arg.Division,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const removePlayerFromFantasyTeam = `-- name: RemovePlayerFromFantasyTeam :exec
 DELETE FROM fantasy_rosters
 WHERE team_id = ? AND player_id = ?

@@ -222,6 +222,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertPlayerStmt, err = db.PrepareContext(ctx, insertPlayer); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertPlayer: %w", err)
 	}
+	if q.insertTeamStmt, err = db.PrepareContext(ctx, insertTeam); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertTeam: %w", err)
+	}
 	if q.removePlayerFromFantasyTeamStmt, err = db.PrepareContext(ctx, removePlayerFromFantasyTeam); err != nil {
 		return nil, fmt.Errorf("error preparing query RemovePlayerFromFantasyTeam: %w", err)
 	}
@@ -590,6 +593,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertPlayerStmt: %w", cerr)
 		}
 	}
+	if q.insertTeamStmt != nil {
+		if cerr := q.insertTeamStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertTeamStmt: %w", cerr)
+		}
+	}
 	if q.removePlayerFromFantasyTeamStmt != nil {
 		if cerr := q.removePlayerFromFantasyTeamStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing removePlayerFromFantasyTeamStmt: %w", cerr)
@@ -750,6 +758,7 @@ type Queries struct {
 	getTopScorersForWeekStmt             *sql.Stmt
 	getTotalWeeksInSeasonStmt            *sql.Stmt
 	insertPlayerStmt                     *sql.Stmt
+	insertTeamStmt                       *sql.Stmt
 	removePlayerFromFantasyTeamStmt      *sql.Stmt
 	searchPlayersStmt                    *sql.Stmt
 	setCurrentSeasonStmt                 *sql.Stmt
@@ -833,6 +842,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getTopScorersForWeekStmt:             q.getTopScorersForWeekStmt,
 		getTotalWeeksInSeasonStmt:            q.getTotalWeeksInSeasonStmt,
 		insertPlayerStmt:                     q.insertPlayerStmt,
+		insertTeamStmt:                       q.insertTeamStmt,
 		removePlayerFromFantasyTeamStmt:      q.removePlayerFromFantasyTeamStmt,
 		searchPlayersStmt:                    q.searchPlayersStmt,
 		setCurrentSeasonStmt:                 q.setCurrentSeasonStmt,

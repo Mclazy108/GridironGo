@@ -162,3 +162,8 @@ WHERE p.id NOT IN (
 AND p.position = ?
 ORDER BY p.name
 LIMIT ?;
+
+-- name: InsertTeam :one
+INSERT INTO nfl_teams (name, city, abbreviation, conference, division)
+VALUES (?, ?, ?, ?, ?)
+RETURNING id;

@@ -76,6 +76,7 @@ type Querier interface {
 	GetTopScorersForWeek(ctx context.Context, arg GetTopScorersForWeekParams) ([]*GetTopScorersForWeekRow, error)
 	GetTotalWeeksInSeason(ctx context.Context, seasonID int64) (interface{}, error)
 	InsertPlayer(ctx context.Context, arg InsertPlayerParams) (int64, error)
+	InsertTeam(ctx context.Context, arg InsertTeamParams) (int64, error)
 	RemovePlayerFromFantasyTeam(ctx context.Context, arg RemovePlayerFromFantasyTeamParams) error
 	SearchPlayers(ctx context.Context, dollar_1 sql.NullString) ([]*NflPlayer, error)
 	SetCurrentSeason(ctx context.Context) error

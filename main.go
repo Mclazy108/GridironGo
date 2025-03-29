@@ -24,8 +24,29 @@ func main() {
 
 	log.Println("Database connection established successfully")
 
-	// Test query - get current season if it exists
+	// Create a scraper
+	scraper := data.NewScraper(db)
+
+	// Start scraping
 	ctx := context.Background()
+
+	// Command line arguments
+	if len(os.Args) > 1 {
+		cmd := os.Args[1]
+		switch cmd {
+		case "scrape":
+			// Scrape NFL teams
+			log.Println("Scraping NFL teams...")
+			err = scraper.ScrapeTeams(ctx)
+			if err != nil {
+				log.Fatalf("Failed to scrape teams: %v", err)
+			}
+			log.Println("Team scraping completed")
+			return
+		}
+	}
+
+	// Test query - get current season if it exists
 	season, err := db.Queries.GetCurrentSeason(ctx)
 	if err != nil {
 		log.Printf("No current season found: %v", err)
@@ -49,3 +70,4 @@ func main() {
 
 	fmt.Println("\nShutting down...")
 }
+
