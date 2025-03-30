@@ -2,12 +2,13 @@ version: "2"
 sql:
   - schema: "internals/data/migrations/schema.sql"
     queries:
-      - "internals/data/queries/player.sql"
-      - "internals/data/queries/team.sql"
-      - "internals/data/queries/league.sql"
-      - "internals/data/queries/season.sql"
-      - "internals/data/queries/draft.sql"
-      - "internals/data/queries/score.sql"
+      #- "internals/data/queries/player.sql"
+      #- "internals/data/queries/team.sql"
+      #- "internals/data/queries/league.sql"
+      #- "internals/data/queries/season.sql"
+      #- "internals/data/queries/draft.sql"
+      #- "internals/data/queries/score.sql"
+      - "internals/data/queries/games.sql"
     engine: "sqlite"
     gen:
       go:
