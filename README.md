@@ -1,6 +1,9 @@
 # GridironGo
 GridironGo is a Fantasy Football CLI app built in Go using the [Bubble Tea](https://github.com/charmbracelet/bubbletea) TUI framework.
 
+![Lines of Code](https://tokei.rs/b1/github/Mclazy108/GridironGo)
+
+
 ## Project Structure
 ```
 .
