@@ -28,26 +28,10 @@ type DBConfig struct {
 }
 
 func DefaultDBConfig(dbPath string) DBConfig {
-	// If no path is specified, use GridironGo.db in the executable's directory
+	// If no path is specified, use GridironGo.db in the current directory
 	if dbPath == "" {
-		// Get the executable's directory
-		exePath, err := os.Executable()
-		if err == nil {
-			// Use the directory of the executable
-			exeDir := filepath.Dir(exePath)
-			// Go to the parent directory (assuming executables is a subdirectory)
-			parentDir := filepath.Dir(exeDir)
-			// If the parent directory contains build.sh, use that (root directory)
-			if _, err := os.Stat(filepath.Join(parentDir, "build.sh")); err == nil {
-				dbPath = filepath.Join(parentDir, "GridironGo.db")
-			} else {
-				// Otherwise just use the current directory
-				dbPath = "./GridironGo.db"
-			}
-		} else {
-			// Fallback to the current directory if we can't determine the executable path
-			dbPath = "./GridironGo.db"
-		}
+		dbPath = "./GridironGo.db"
+		log.Printf("No database path specified, using default: %s", dbPath)
 	}
 
 	return DBConfig{
@@ -73,7 +57,43 @@ func NewDB(config *DBConfig) (*DB, error) {
 	// Use default config if none provided
 	cfg := DefaultDBConfig("")
 	if config != nil {
-		cfg = *config
+		if config.Path != "" {
+			cfg.Path = config.Path
+		} else {
+			// Ensure path is never empty
+			cfg.Path = "./GridironGo.db"
+			log.Printf("Warning: Empty database path in config, using default: %s", cfg.Path)
+		}
+
+		// Copy other config settings if provided
+		if config.ForeignKeys {
+			cfg.ForeignKeys = config.ForeignKeys
+		}
+		if config.JournalMode != "" {
+			cfg.JournalMode = config.JournalMode
+		}
+		if config.BusyTimeout > 0 {
+			cfg.BusyTimeout = config.BusyTimeout
+		}
+		if config.MaxOpenConns > 0 {
+			cfg.MaxOpenConns = config.MaxOpenConns
+		}
+		if config.MaxIdleConns > 0 {
+			cfg.MaxIdleConns = config.MaxIdleConns
+		}
+		if config.ConnMaxLifetime > 0 {
+			cfg.ConnMaxLifetime = config.ConnMaxLifetime
+		}
+	}
+
+	// Debug: Print path being used
+	log.Printf("Using database path: %s", cfg.Path)
+
+	// Check if database file exists
+	if _, err := os.Stat(cfg.Path); err == nil {
+		log.Printf("Database file already exists at: %s", cfg.Path)
+	} else {
+		log.Printf("Database file does not exist, will be created at: %s", cfg.Path)
 	}
 
 	// Create directory if it doesn't exist
@@ -87,6 +107,8 @@ func NewDB(config *DBConfig) (*DB, error) {
 	// Connect to database with correct parameters
 	connStr := fmt.Sprintf("file:%s?_foreign_keys=%t&_journal_mode=%s&_busy_timeout=%d",
 		cfg.Path, cfg.ForeignKeys, cfg.JournalMode, cfg.BusyTimeout)
+
+	log.Printf("SQLite connection string: %s", connStr)
 
 	db, err := sql.Open("sqlite3", connStr)
 	if err != nil {
@@ -104,11 +126,42 @@ func NewDB(config *DBConfig) (*DB, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	// Apply migrations
-	if err := applyMigrations(db); err != nil {
+	log.Println("Successfully connected to database")
+
+	// Always try to create table directly (will be idempotent)
+	schemaSQL := `
+	CREATE TABLE IF NOT EXISTS nfl_games (
+		event_id INTEGER PRIMARY KEY,
+		date TEXT NOT NULL,
+		name TEXT NOT NULL,
+		short_name TEXT NOT NULL,
+		season INTEGER NOT NULL,
+		week INTEGER NOT NULL,
+		away_team TEXT NOT NULL,
+		home_team TEXT NOT NULL
+	);`
+
+	log.Println("Creating nfl_games table...")
+	_, err = db.Exec(schemaSQL)
+	if err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to apply migrations: %w", err)
+		return nil, fmt.Errorf("failed to create nfl_games table: %w", err)
 	}
+
+	// Verify the table was created
+	var count int
+	err = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='nfl_games'").Scan(&count)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("error checking if nfl_games table exists: %w", err)
+	}
+
+	if count == 0 {
+		db.Close()
+		return nil, fmt.Errorf("failed to create nfl_games table")
+	}
+
+	log.Println("Successfully verified nfl_games table exists")
 
 	// Create sqlc queries
 	queries := sqlc.New(db)
@@ -118,74 +171,6 @@ func NewDB(config *DBConfig) (*DB, error) {
 		Queries: queries,
 		config:  cfg,
 	}, nil
-}
-
-/*
-// tablesExist checks if the database schema has already been applied
-func tablesExist(db *sql.DB) (bool, error) {
-	// Check for the existence of one of your tables
-	var count int
-	err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='seasons'").Scan(&count)
-	if err != nil {
-		return false, err
-	}
-	return count > 0, nil
-}
-*/
-
-// applyMigrations applies all SQL migrations in the migrations directory
-func applyMigrations(db *sql.DB) error {
-	// Check if tables already exist
-	/*
-		exists, err := tablesExist(db)
-		if err != nil {
-			return fmt.Errorf("failed to check if tables exist: %w", err)
-		}
-
-
-		// Skip migrations if tables already exist
-		if exists {
-			log.Println("Database schema already exists, skipping migrations")
-			return nil
-		}
-	*/
-
-	// Get migrations from embedded filesystem
-	migrations, err := migrationFS.ReadDir("migrations")
-	if err != nil {
-		return fmt.Errorf("failed to read migrations directory: %w", err)
-	}
-
-	// Start transaction for migrations
-	tx, err := db.Begin()
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Apply migrations in order
-	for _, migration := range migrations {
-		if !migration.IsDir() && filepath.Ext(migration.Name()) == ".sql" {
-			migrationPath := filepath.Join("migrations", migration.Name())
-			migrationSQL, err := migrationFS.ReadFile(migrationPath)
-			if err != nil {
-				return fmt.Errorf("failed to read migration %s: %w", migration.Name(), err)
-			}
-
-			if _, err := tx.Exec(string(migrationSQL)); err != nil {
-				return fmt.Errorf("failed to execute migration %s: %w", migration.Name(), err)
-			}
-
-			log.Printf("Applied migration: %s", migration.Name())
-		}
-	}
-
-	// Commit transaction
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit migrations: %w", err)
-	}
-
-	return nil
 }
 
 // Close closes the database connection
@@ -211,3 +196,4 @@ func (db *DB) ExecTx(ctx context.Context, fn func(*sqlc.Queries) error) error {
 
 	return tx.Commit()
 }
+
