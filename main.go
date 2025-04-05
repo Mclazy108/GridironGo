@@ -16,6 +16,7 @@ import (
 func main() {
 	// Define command-line flags
 	scrapeGames := flag.Bool("scrape-games", false, "Scrape NFL game data for seasons 2022-2024")
+	scrapeTeams := flag.Bool("scrape-teams", false, "Scrape NFL team data")
 	dbPath := flag.String("db", "./GridironGo.db", "Path to SQLite database (default: ./GridironGo.db)")
 
 	// Parse flags
@@ -60,52 +61,117 @@ func main() {
 		os.Exit(1)
 	}()
 
-	// If scraping games is requested, do that and exit
-	if *scrapeGames {
-		log.Println("Starting NFL game data scraping...")
-		log.Println("Press Ctrl+C for graceful cancellation")
+	// Check if no specific scraping flags were provided
+	runDefaultScraping := !*scrapeGames && !*scrapeTeams && len(os.Args) == 1
 
-		scraperInstance := scraper.NewScraper(db)
-
-		// Scrape games for seasons 2022-2024
-		seasons := []int{2022, 2023, 2024}
-
-		// Count games before scraping
-		games, err := db.Queries.GetAllGames(ctx)
+	// Run game scraping if explicitly requested or running default
+	if *scrapeGames || runDefaultScraping {
+		err := runGameScraper(ctx, db)
 		if err != nil {
-			log.Printf("Warning: Could not get existing game count: %v", err)
-		} else {
-			log.Printf("Found %d existing games in database before scraping", len(games))
+			log.Printf("Error during game scraping: %v", err)
 		}
+	}
 
-		// Perform scraping with cancellable context
-		err = scraperInstance.ScrapeNFLGames(ctx, seasons)
-
-		// Check if the operation was cancelled by the user
-		if ctx.Err() != nil {
-			log.Println("Scraping was cancelled by the user")
-			return
-		}
-
+	// Run team scraping if explicitly requested or running default
+	if *scrapeTeams || runDefaultScraping {
+		err := runTeamScraper(ctx, db)
 		if err != nil {
-			log.Fatalf("Error scraping NFL games: %v", err)
+			log.Printf("Error during team scraping: %v", err)
 		}
+	}
 
-		// Count games after scraping
-		games, err = db.Queries.GetAllGames(ctx)
-		if err != nil {
-			log.Printf("Warning: Could not get updated game count: %v", err)
-		} else {
-			log.Printf("Database now contains %d games after scraping", len(games))
-		}
-
-		// Report success and exit
-		log.Println("NFL game data scraping completed successfully")
+	// If specific scraping flags were provided or default scraping was run, exit
+	if *scrapeGames || *scrapeTeams || runDefaultScraping {
 		return
 	}
 
-	// Here you would normally start your TUI application
-	// For now, just print a message if no actions were specified
+	// Otherwise, start the TUI application
 	fmt.Println("GridironGo - Fantasy Football CLI App")
-	fmt.Println("Use -h flag to see available options")
+	fmt.Println("Starting the application...")
+	// Here you would normally start your TUI application
+}
+
+// runGameScraper handles the game scraping process
+func runGameScraper(ctx context.Context, db *data.DB) error {
+	log.Println("Starting NFL game data scraping...")
+	log.Println("Press Ctrl+C for graceful cancellation")
+
+	scraperInstance := scraper.NewScraper(db)
+
+	// Scrape games for seasons 2022-2024
+	seasons := []int{2022, 2023, 2024}
+
+	// Count games before scraping
+	games, err := db.Queries.GetAllGames(ctx)
+	if err != nil {
+		log.Printf("Warning: Could not get existing game count: %v", err)
+	} else {
+		log.Printf("Found %d existing games in database before scraping", len(games))
+	}
+
+	// Perform scraping with cancellable context
+	err = scraperInstance.ScrapeNFLGames(ctx, seasons)
+
+	// Check if the operation was cancelled by the user
+	if ctx.Err() != nil {
+		log.Println("Scraping was cancelled by the user")
+		return ctx.Err()
+	}
+
+	if err != nil {
+		return fmt.Errorf("error scraping NFL games: %w", err)
+	}
+
+	// Count games after scraping
+	games, err = db.Queries.GetAllGames(ctx)
+	if err != nil {
+		log.Printf("Warning: Could not get updated game count: %v", err)
+	} else {
+		log.Printf("Database now contains %d games after scraping", len(games))
+	}
+
+	// Report success
+	log.Println("NFL game data scraping completed successfully")
+	return nil
+}
+
+// runTeamScraper handles the team scraping process
+func runTeamScraper(ctx context.Context, db *data.DB) error {
+	log.Println("Starting NFL team data scraping...")
+	log.Println("Press Ctrl+C for graceful cancellation")
+
+	teamScraperInstance := scraper.NewTeamScraper(db)
+
+	// Count teams before scraping
+	teams, err := db.Queries.GetAllNFLTeams(ctx)
+	if err != nil {
+		log.Printf("Warning: Could not get existing team count: %v", err)
+	} else {
+		log.Printf("Found %d existing teams in database before scraping", len(teams))
+	}
+
+	// Perform scraping with cancellable context
+	err = teamScraperInstance.ScrapeNFLTeams(ctx)
+
+	// Check if the operation was cancelled by the user
+	if ctx.Err() != nil {
+		log.Println("Team scraping was cancelled by the user")
+		return ctx.Err()
+	}
+
+	if err != nil {
+		return fmt.Errorf("error scraping NFL teams: %w", err)
+	}
+
+	// Count teams after scraping
+	teams, err = db.Queries.GetAllNFLTeams(ctx)
+	if err != nil {
+		log.Printf("Warning: Could not get updated team count: %v", err)
+	} else {
+		log.Printf("Database now contains %d teams after scraping", len(teams))
+	}
+
+	// Report success
+	log.Println("NFL team data scraping completed successfully")
+	return nil
 }

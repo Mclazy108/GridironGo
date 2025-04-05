@@ -128,27 +128,21 @@ func NewDB(config *DBConfig) (*DB, error) {
 
 	log.Println("Successfully connected to database")
 
-	// Always try to create table directly (will be idempotent)
-	schemaSQL := `
-	CREATE TABLE IF NOT EXISTS nfl_games (
-		event_id INTEGER PRIMARY KEY,
-		date TEXT NOT NULL,
-		name TEXT NOT NULL,
-		short_name TEXT NOT NULL,
-		season INTEGER NOT NULL,
-		week INTEGER NOT NULL,
-		away_team TEXT NOT NULL,
-		home_team TEXT NOT NULL
-	);`
-
-	log.Println("Creating nfl_games table...")
-	_, err = db.Exec(schemaSQL)
+	// Apply schema migrations from the embedded schema.sql file
+	schemaSQL, err := migrationFS.ReadFile("migrations/schema.sql")
 	if err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to create nfl_games table: %w", err)
+		return nil, fmt.Errorf("failed to read schema.sql: %w", err)
 	}
 
-	// Verify the table was created
+	log.Println("Applying schema migrations from schema.sql...")
+	_, err = db.Exec(string(schemaSQL))
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to execute schema migrations: %w", err)
+	}
+
+	// Verify the nfl_games table was created
 	var count int
 	err = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='nfl_games'").Scan(&count)
 	if err != nil {
@@ -162,6 +156,21 @@ func NewDB(config *DBConfig) (*DB, error) {
 	}
 
 	log.Println("Successfully verified nfl_games table exists")
+
+	// Verify the nfl_teams table was created
+	count = 0
+	err = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='nfl_teams'").Scan(&count)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("error checking if nfl_teams table exists: %w", err)
+	}
+
+	if count == 0 {
+		db.Close()
+		return nil, fmt.Errorf("failed to create nfl_teams table")
+	}
+
+	log.Println("Successfully verified nfl_teams table exists")
 
 	// Create sqlc queries
 	queries := sqlc.New(db)
@@ -196,4 +205,3 @@ func (db *DB) ExecTx(ctx context.Context, fn func(*sqlc.Queries) error) error {
 
 	return tx.Commit()
 }
-

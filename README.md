@@ -22,18 +22,17 @@ GridironGo is a Fantasy Football CLI app built in Go using the [Bubble Tea](http
 │   │   │   ├── player.sql      # Player-related queries (stats, fantasy points, searching)
 │   │   │   ├── score.sql       # Scoring system queries (weekly scores, standings updates)
 │   │   │   ├── season.sql      # Season data queries (schedules, games, tracking progress)
-│   │   │   └── team.sql        # Team management queries (roster, standings, updates)
-│   │   ├── scrape.go           # Scrapes football stats and schedules for the last 3 seasons
+│   │   │   ├── teams.sql       # Team management queries (roster, standings, updates)
+│   │   │   └── games.sql       # Game schedule queries
+│   │   ├── scraper             # Data scrapers for NFL data
+│   │   │   ├── scrape-games.go # Scrapes NFL game schedules from ESPN API
+│   │   │   └── scrape-teams.go # Scrapes NFL team data from ESPN API
 │   │   └── sqlc                # Generated SQL code by sqlc
 │   │       ├── db.go           # Database connection and query execution
-│   │       ├── draft.sql.go    # Generated code for draft queries
-│   │       ├── league.sql.go   # Generated code for league queries
+│   │       ├── games.sql.go    # Generated code for game queries
+│   │       ├── teams.sql.go    # Generated code for team queries
 │   │       ├── models.go       # Generated data models
-│   │       ├── player.sql.go   # Generated code for player queries
-│   │       ├── querier.go      # Interface defining all available queries
-│   │       ├── score.sql.go    # Generated code for score queries
-│   │       ├── season.sql.go   # Generated code for season queries
-│   │       └── team.sql.go     # Generated code for team queries
+│   │       └── querier.go      # Interface defining all available queries
 │   ├── league
 │   │   ├── league.go           # Manages fantasy league setup and operations
 │   │   ├── rules.go            # Handles league rules including scoring and configurations
@@ -100,20 +99,37 @@ The application uses SQLite with sqlc for type-safe database operations. Key tab
    go mod tidy
    ```
 
-3. Generate SQLc code (if you've made changes to SQL queries)
+3. Generate SQLc code
    ```bash
    sqlc generate
    ```
 
-4. Run the application
+4. Scrape NFL game data
+   ```bash
+   go run main.go -scrape-games
+   ```
+
+5. Scrape NFL team data
+   ```bash
+   go run main.go -scrape-teams
+   ```
+
+6. Run the application
    ```bash
    go run main.go
    ```
 
-5. Or build the application for your platform
+7. Or build the application for your platform
    ```bash
    go build -o GridironGo
    ```
+
+## Command Line Options
+GridironGo supports several command line flags:
+
+- `-db`: Specify the path to the SQLite database (default: "./GridironGo.db")
+- `-scrape-games`: Scrape NFL game data for seasons 2022-2024
+- `-scrape-teams`: Scrape NFL team data (team names, divisions, colors, etc.)
 
 ## Building Executables
 The project includes a build script that creates executables for multiple platforms:
@@ -128,6 +144,11 @@ chmod +x build.sh
 
 This will create executables for Linux, macOS, and Windows in the `executables` directory.
 
+## Data Sources
+The application uses ESPN API endpoints to fetch NFL data:
+- Game schedules: `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard`
+- Team information: `https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/teams`
+- Detailed team data: `https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/{team_id}`
 
 ## License
 MIT

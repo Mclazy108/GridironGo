@@ -4,6 +4,10 @@
 
 package sqlc
 
+import (
+	"database/sql"
+)
+
 type NflGame struct {
 	EventID   int64  `json:"event_id"`
 	Date      string `json:"date"`
@@ -13,4 +17,18 @@ type NflGame struct {
 	Week      int64  `json:"week"`
 	AwayTeam  string `json:"away_team"`
 	HomeTeam  string `json:"home_team"`
+}
+
+type NflTeam struct {
+	TeamID         string         `json:"team_id"`
+	DisplayName    string         `json:"display_name"`
+	Abbreviation   string         `json:"abbreviation"`
+	ShortName      string         `json:"short_name"`
+	Location       string         `json:"location"`
+	Nickname       string         `json:"nickname"`
+	Conference     string         `json:"conference"`
+	Division       string         `json:"division"`
+	PrimaryColor   sql.NullString `json:"primary_color"`
+	SecondaryColor sql.NullString `json:"secondary_color"`
+	LogoUrl        sql.NullString `json:"logo_url"`
 }

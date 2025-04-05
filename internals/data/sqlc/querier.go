@@ -10,11 +10,18 @@ import (
 
 type Querier interface {
 	CreateGame(ctx context.Context, arg CreateGameParams) error
+	CreateNFLTeam(ctx context.Context, arg CreateNFLTeamParams) error
 	DeleteGame(ctx context.Context, eventID int64) error
+	DeleteNFLTeam(ctx context.Context, teamID string) error
 	GetAllGames(ctx context.Context) ([]*NflGame, error)
 	GetAllGamesBySeasonAndWeek(ctx context.Context, arg GetAllGamesBySeasonAndWeekParams) ([]*NflGame, error)
+	GetAllNFLTeams(ctx context.Context) ([]*NflTeam, error)
 	GetGame(ctx context.Context, eventID int64) (*NflGame, error)
+	GetNFLTeam(ctx context.Context, teamID string) (*NflTeam, error)
+	GetTeamsByConference(ctx context.Context, conference string) ([]*NflTeam, error)
+	GetTeamsByDivision(ctx context.Context, division string) ([]*NflTeam, error)
 	UpdateGame(ctx context.Context, arg UpdateGameParams) error
+	UpdateNFLTeam(ctx context.Context, arg UpdateNFLTeamParams) error
 }
 
 var _ Querier = (*Queries)(nil)
