@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/Mclazy108/GridironGo/internals/data"
+	"github.com/Mclazy108/GridironGo/internals/data/scraper"
 )
 
 func main() {
@@ -64,8 +65,7 @@ func main() {
 		log.Println("Starting NFL game data scraping...")
 		log.Println("Press Ctrl+C for graceful cancellation")
 
-		// Create scraper
-		scraper := data.NewScraper(db)
+		scraperInstance := scraper.NewScraper(db)
 
 		// Scrape games for seasons 2022-2024
 		seasons := []int{2022, 2023, 2024}
@@ -79,7 +79,7 @@ func main() {
 		}
 
 		// Perform scraping with cancellable context
-		err = scraper.ScrapeNFLGames(ctx, seasons)
+		err = scraperInstance.ScrapeNFLGames(ctx, seasons)
 
 		// Check if the operation was cancelled by the user
 		if ctx.Err() != nil {
@@ -109,4 +109,3 @@ func main() {
 	fmt.Println("GridironGo - Fantasy Football CLI App")
 	fmt.Println("Use -h flag to see available options")
 }
-

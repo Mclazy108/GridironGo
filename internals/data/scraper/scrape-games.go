@@ -1,23 +1,23 @@
-package data
+package scraper
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Mclazy108/GridironGo/internals/data"
+	"github.com/Mclazy108/GridironGo/internals/data/sqlc"
 	"log"
 	"net/http"
 	"time"
-
-	"github.com/Mclazy108/GridironGo/internals/data/sqlc"
 )
 
 // NFLScraper handles fetching and storing NFL data
 type NFLScraper struct {
-	DB *DB
+	DB *data.DB
 }
 
 // NewScraper creates a new scraper that can populate the database
-func NewScraper(db *DB) *NFLScraper {
+func NewScraper(db *data.DB) *NFLScraper {
 	return &NFLScraper{
 		DB: db,
 	}
@@ -270,4 +270,3 @@ func extractTeams(gameName string) (string, string) {
 	log.Printf("Failed to extract teams from game name: %s", gameName)
 	return "", ""
 }
-
