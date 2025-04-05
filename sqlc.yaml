@@ -2,7 +2,7 @@ version: "2"
 sql:
   - schema: "internals/data/migrations/schema.sql"
     queries:
-      #- "internals/data/queries/player.sql"
+      - "internals/data/queries/players.sql"
       - "internals/data/queries/teams.sql"
       #- "internals/data/queries/league.sql"
       #- "internals/data/queries/season.sql"

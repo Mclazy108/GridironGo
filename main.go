@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"flag"
 	"fmt"
 	"log"
@@ -17,6 +18,7 @@ func main() {
 	// Define command-line flags
 	scrapeGames := flag.Bool("scrape-games", false, "Scrape NFL game data for seasons 2022-2024")
 	scrapeTeams := flag.Bool("scrape-teams", false, "Scrape NFL team data")
+	scrapePlayers := flag.Bool("scrape-players", false, "Scrape NFL player data")
 	dbPath := flag.String("db", "./GridironGo.db", "Path to SQLite database (default: ./GridironGo.db)")
 
 	// Parse flags
@@ -62,7 +64,7 @@ func main() {
 	}()
 
 	// Check if no specific scraping flags were provided
-	runDefaultScraping := !*scrapeGames && !*scrapeTeams && len(os.Args) == 1
+	runDefaultScraping := !*scrapeGames && !*scrapeTeams && !*scrapePlayers && len(flag.Args()) == 0
 
 	// Run game scraping if explicitly requested or running default
 	if *scrapeGames || runDefaultScraping {
@@ -80,8 +82,16 @@ func main() {
 		}
 	}
 
+	// Run player scraping if explicitly requested or running default
+	if *scrapePlayers || runDefaultScraping {
+		err := runPlayerScraper(ctx, db)
+		if err != nil {
+			log.Printf("Error during player scraping: %v", err)
+		}
+	}
+
 	// If specific scraping flags were provided or default scraping was run, exit
-	if *scrapeGames || *scrapeTeams || runDefaultScraping {
+	if *scrapeGames || *scrapeTeams || *scrapePlayers || runDefaultScraping {
 		return
 	}
 
@@ -173,5 +183,46 @@ func runTeamScraper(ctx context.Context, db *data.DB) error {
 
 	// Report success
 	log.Println("NFL team data scraping completed successfully")
+	return nil
+}
+
+// runPlayerScraper handles the player scraping process
+func runPlayerScraper(ctx context.Context, db *data.DB) error {
+	log.Println("Starting NFL player data scraping...")
+	log.Println("Press Ctrl+C for graceful cancellation")
+
+	playerScraperInstance := scraper.NewPlayerScraper(db)
+
+	// Count players before scraping
+	players, err := db.Queries.GetAllNFLPlayers(ctx)
+	if err != nil && err != sql.ErrNoRows {
+		log.Printf("Warning: Could not get existing player count: %v", err)
+	} else {
+		log.Printf("Found %d existing players in database before scraping", len(players))
+	}
+
+	// Perform scraping with cancellable context
+	err = playerScraperInstance.ScrapeNFLPlayers(ctx)
+
+	// Check if the operation was cancelled by the user
+	if ctx.Err() != nil {
+		log.Println("Player scraping was cancelled by the user")
+		return ctx.Err()
+	}
+
+	if err != nil {
+		return fmt.Errorf("error scraping NFL players: %w", err)
+	}
+
+	// Count players after scraping
+	players, err = db.Queries.GetAllNFLPlayers(ctx)
+	if err != nil && err != sql.ErrNoRows {
+		log.Printf("Warning: Could not get updated player count: %v", err)
+	} else {
+		log.Printf("Database now contains %d players after scraping", len(players))
+	}
+
+	// Report success
+	log.Println("NFL player data scraping completed successfully")
 	return nil
 }

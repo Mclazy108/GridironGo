@@ -129,17 +129,46 @@ func NewDB(config *DBConfig) (*DB, error) {
 	log.Println("Successfully connected to database")
 
 	// Apply schema migrations from the embedded schema.sql file
-	schemaSQL, err := migrationFS.ReadFile("migrations/schema.sql")
+	log.Println("Checking if tables already exist...")
+
+	// Check if tables already exist
+	var nflGameCount, nflTeamCount, nflPlayerCount int
+	err = db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='nfl_games'").Scan(&nflGameCount)
 	if err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to read schema.sql: %w", err)
+		return nil, fmt.Errorf("error checking if nfl_games table exists: %w", err)
 	}
 
-	log.Println("Applying schema migrations from schema.sql...")
-	_, err = db.Exec(string(schemaSQL))
+	err = db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='nfl_teams'").Scan(&nflTeamCount)
 	if err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to execute schema migrations: %w", err)
+		return nil, fmt.Errorf("error checking if nfl_teams table exists: %w", err)
+	}
+
+	err = db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='nfl_players'").Scan(&nflPlayerCount)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("error checking if nfl_players table exists: %w", err)
+	}
+
+	if nflGameCount > 0 && nflTeamCount > 0 && nflPlayerCount > 0 {
+		log.Println("All required tables already exist, skipping schema creation")
+	} else {
+		// Read schema file
+		schemaSQL, err := migrationFS.ReadFile("migrations/schema.sql")
+		if err != nil {
+			db.Close()
+			return nil, fmt.Errorf("failed to read schema.sql: %w", err)
+		}
+
+		log.Println("Applying schema migrations from schema.sql...")
+		_, err = db.Exec(string(schemaSQL))
+		if err != nil {
+			db.Close()
+			return nil, fmt.Errorf("failed to execute schema migrations: %w", err)
+		}
+
+		log.Println("Schema migrations applied successfully")
 	}
 
 	// Verify the nfl_games table was created
@@ -171,6 +200,21 @@ func NewDB(config *DBConfig) (*DB, error) {
 	}
 
 	log.Println("Successfully verified nfl_teams table exists")
+
+	// Verify the nfl_players table was created
+	count = 0
+	err = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='nfl_players'").Scan(&count)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("error checking if nfl_players table exists: %w", err)
+	}
+
+	if count == 0 {
+		db.Close()
+		return nil, fmt.Errorf("failed to create nfl_players table")
+	}
+
+	log.Println("Successfully verified nfl_players table exists")
 
 	// Create sqlc queries
 	queries := sqlc.New(db)

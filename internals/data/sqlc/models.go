@@ -19,6 +19,26 @@ type NflGame struct {
 	HomeTeam  string `json:"home_team"`
 }
 
+type NflPlayer struct {
+	PlayerID   string         `json:"player_id"`
+	FirstName  string         `json:"first_name"`
+	LastName   string         `json:"last_name"`
+	FullName   string         `json:"full_name"`
+	Position   string         `json:"position"`
+	TeamID     sql.NullString `json:"team_id"`
+	Jersey     sql.NullString `json:"jersey"`
+	Height     sql.NullInt64  `json:"height"`
+	Weight     sql.NullInt64  `json:"weight"`
+	Active     bool           `json:"active"`
+	College    sql.NullString `json:"college"`
+	Experience sql.NullInt64  `json:"experience"`
+	DraftYear  sql.NullInt64  `json:"draft_year"`
+	DraftRound sql.NullInt64  `json:"draft_round"`
+	DraftPick  sql.NullInt64  `json:"draft_pick"`
+	Status     sql.NullString `json:"status"`
+	ImageUrl   sql.NullString `json:"image_url"`
+}
+
 type NflTeam struct {
 	TeamID         string         `json:"team_id"`
 	DisplayName    string         `json:"display_name"`
