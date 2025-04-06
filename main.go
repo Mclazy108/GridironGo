@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/Mclazy108/GridironGo/internals/data"
 	"github.com/Mclazy108/GridironGo/internals/data/scraper"
@@ -21,6 +22,12 @@ func main() {
 	scrapePlayers := flag.Bool("scrape-players", false, "Scrape NFL player data")
 	dbPath := flag.String("db", "./GridironGo.db", "Path to SQLite database (default: ./GridironGo.db)")
 
+	// Track durations for summary
+	var (
+		gameDuration   time.Duration
+		teamDuration   time.Duration
+		playerDuration time.Duration
+	)
 	// Parse flags
 	flag.Parse()
 
@@ -68,7 +75,9 @@ func main() {
 
 	// Run game scraping if explicitly requested or running default
 	if *scrapeGames || runDefaultScraping {
+		start := time.Now()
 		err := runGameScraper(ctx, db)
+		gameDuration = time.Since(start)
 		if err != nil {
 			log.Printf("Error during game scraping: %v", err)
 		}
@@ -76,7 +85,9 @@ func main() {
 
 	// Run team scraping if explicitly requested or running default
 	if *scrapeTeams || runDefaultScraping {
+		start := time.Now()
 		err := runTeamScraper(ctx, db)
+		teamDuration = time.Since(start)
 		if err != nil {
 			log.Printf("Error during team scraping: %v", err)
 		}
@@ -84,7 +95,9 @@ func main() {
 
 	// Run player scraping if explicitly requested or running default
 	if *scrapePlayers || runDefaultScraping {
+		start := time.Now()
 		err := runPlayerScraper(ctx, db)
+		playerDuration = time.Since(start)
 		if err != nil {
 			log.Printf("Error during player scraping: %v", err)
 		}
@@ -92,6 +105,19 @@ func main() {
 
 	// If specific scraping flags were provided or default scraping was run, exit
 	if *scrapeGames || *scrapeTeams || *scrapePlayers || runDefaultScraping {
+
+		log.Println("------------------------------------------------")
+		log.Println("🏁 Scraping Summary:")
+		if *scrapeGames || runDefaultScraping {
+			log.Printf("⏱  Games scraped in:   %s", gameDuration)
+		}
+		if *scrapeTeams || runDefaultScraping {
+			log.Printf("⏱  Teams scraped in:   %s", teamDuration)
+		}
+		if *scrapePlayers || runDefaultScraping {
+			log.Printf("⏱  Players scraped in: %s", playerDuration)
+		}
+		log.Println("------------------------------------------------")
 		return
 	}
 

@@ -59,3 +59,29 @@ SELECT * FROM nfl_players
 WHERE (full_name LIKE ? OR last_name LIKE ?) AND active = true
 ORDER BY last_name, first_name
 LIMIT 50;
+
+-- name: UpsertNFLPlayer :exec
+INSERT INTO nfl_players (
+  player_id, first_name, last_name, full_name, position, team_id,
+  jersey, height, weight, active, college, experience,
+  draft_year, draft_round, draft_pick, status, image_url
+) VALUES (
+  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+) ON CONFLICT(player_id) DO UPDATE SET
+  first_name = excluded.first_name,
+  last_name = excluded.last_name,
+  full_name = excluded.full_name,
+  position = excluded.position,
+  team_id = excluded.team_id,
+  jersey = excluded.jersey,
+  height = excluded.height,
+  weight = excluded.weight,
+  active = excluded.active,
+  college = excluded.college,
+  experience = excluded.experience,
+  draft_year = excluded.draft_year,
+  draft_round = excluded.draft_round,
+  draft_pick = excluded.draft_pick,
+  status = excluded.status,
+  image_url = excluded.image_url;
+

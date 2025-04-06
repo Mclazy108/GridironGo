@@ -406,3 +406,72 @@ func (q *Queries) UpdateNFLPlayer(ctx context.Context, arg UpdateNFLPlayerParams
 	)
 	return err
 }
+
+const upsertNFLPlayer = `-- name: UpsertNFLPlayer :exec
+INSERT INTO nfl_players (
+  player_id, first_name, last_name, full_name, position, team_id,
+  jersey, height, weight, active, college, experience,
+  draft_year, draft_round, draft_pick, status, image_url
+) VALUES (
+  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+) ON CONFLICT(player_id) DO UPDATE SET
+  first_name = excluded.first_name,
+  last_name = excluded.last_name,
+  full_name = excluded.full_name,
+  position = excluded.position,
+  team_id = excluded.team_id,
+  jersey = excluded.jersey,
+  height = excluded.height,
+  weight = excluded.weight,
+  active = excluded.active,
+  college = excluded.college,
+  experience = excluded.experience,
+  draft_year = excluded.draft_year,
+  draft_round = excluded.draft_round,
+  draft_pick = excluded.draft_pick,
+  status = excluded.status,
+  image_url = excluded.image_url
+`
+
+type UpsertNFLPlayerParams struct {
+	PlayerID   string         `json:"player_id"`
+	FirstName  string         `json:"first_name"`
+	LastName   string         `json:"last_name"`
+	FullName   string         `json:"full_name"`
+	Position   string         `json:"position"`
+	TeamID     sql.NullString `json:"team_id"`
+	Jersey     sql.NullString `json:"jersey"`
+	Height     sql.NullInt64  `json:"height"`
+	Weight     sql.NullInt64  `json:"weight"`
+	Active     bool           `json:"active"`
+	College    sql.NullString `json:"college"`
+	Experience sql.NullInt64  `json:"experience"`
+	DraftYear  sql.NullInt64  `json:"draft_year"`
+	DraftRound sql.NullInt64  `json:"draft_round"`
+	DraftPick  sql.NullInt64  `json:"draft_pick"`
+	Status     sql.NullString `json:"status"`
+	ImageUrl   sql.NullString `json:"image_url"`
+}
+
+func (q *Queries) UpsertNFLPlayer(ctx context.Context, arg UpsertNFLPlayerParams) error {
+	_, err := q.exec(ctx, q.upsertNFLPlayerStmt, upsertNFLPlayer,
+		arg.PlayerID,
+		arg.FirstName,
+		arg.LastName,
+		arg.FullName,
+		arg.Position,
+		arg.TeamID,
+		arg.Jersey,
+		arg.Height,
+		arg.Weight,
+		arg.Active,
+		arg.College,
+		arg.Experience,
+		arg.DraftYear,
+		arg.DraftRound,
+		arg.DraftPick,
+		arg.Status,
+		arg.ImageUrl,
+	)
+	return err
+}

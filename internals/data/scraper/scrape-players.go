@@ -181,12 +181,61 @@ func (s *PlayerScraper) ScrapeNFLPlayers(ctx context.Context) error {
 	return nil
 }
 
+func insertNFLPlayersBulk(ctx context.Context, tx *sql.Tx, players []sqlc.UpsertNFLPlayerParams) error {
+	if len(players) == 0 {
+		return nil
+	}
+
+	// Build query
+	query := `INSERT INTO nfl_players (
+		player_id, first_name, last_name, full_name, position, team_id,
+		jersey, height, weight, active, college, experience,
+		draft_year, draft_round, draft_pick, status, image_url
+	) VALUES `
+
+	// Collect value placeholders like (?, ?, ?, ...), (?, ?, ?, ...), ...
+	valueStrings := make([]string, 0, len(players))
+	valueArgs := make([]interface{}, 0, len(players)*17)
+
+	for _, p := range players {
+		valueStrings = append(valueStrings, "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+		valueArgs = append(valueArgs,
+			p.PlayerID, p.FirstName, p.LastName, p.FullName, p.Position,
+			p.TeamID, p.Jersey, p.Height, p.Weight, p.Active, p.College,
+			p.Experience, p.DraftYear, p.DraftRound, p.DraftPick, p.Status, p.ImageUrl,
+		)
+	}
+
+	query += strings.Join(valueStrings, ",") +
+		` ON CONFLICT(player_id) DO UPDATE SET
+			first_name = excluded.first_name,
+			last_name = excluded.last_name,
+			full_name = excluded.full_name,
+			position = excluded.position,
+			team_id = excluded.team_id,
+			jersey = excluded.jersey,
+			height = excluded.height,
+			weight = excluded.weight,
+			active = excluded.active,
+			college = excluded.college,
+			experience = excluded.experience,
+			draft_year = excluded.draft_year,
+			draft_round = excluded.draft_round,
+			draft_pick = excluded.draft_pick,
+			status = excluded.status,
+			image_url = excluded.image_url`
+
+	// Prepare + exec
+	_, err := tx.ExecContext(ctx, query, valueArgs...)
+	return err
+}
+
 // processTeamRoster fetches and processes an entire team's roster in a single transaction
+
 func (s *PlayerScraper) processTeamRoster(ctx context.Context, team sqlc.NflTeam, limiter *rate.Limiter) (int, error) {
 	teamID := team.TeamID
 	teamName := team.DisplayName
 
-	// Fetch the team's roster
 	if err := limiter.Wait(ctx); err != nil {
 		return 0, fmt.Errorf("rate limiter error: %w", err)
 	}
@@ -198,31 +247,25 @@ func (s *PlayerScraper) processTeamRoster(ctx context.Context, team sqlc.NflTeam
 
 	log.Printf("Found %d players on %s roster, fetching player details", len(playerIDs), teamName)
 
-	// Collect player data
 	playerDataList := make([]PlayerData, 0, len(playerIDs))
 
-	// Fetch details for all players in the roster
 	for _, playerID := range playerIDs {
-		// Rate limit API calls
 		if err := limiter.Wait(ctx); err != nil {
 			log.Printf("Rate limiter error while fetching player %s: %v", playerID, err)
 			continue
 		}
 
-		// Fetch player details
 		playerResponse, err := s.fetchPlayerDetails(ctx, playerID)
 		if err != nil {
 			log.Printf("Error fetching details for player ID %s: %v", playerID, err)
 			continue
 		}
 
-		// Skip players without position data
 		if playerResponse.Position.Abbreviation == "" {
 			log.Printf("Skipping player %s - no position data", playerResponse.FullName)
 			continue
 		}
 
-		// Add to player data list
 		playerDataList = append(playerDataList, PlayerData{
 			PlayerID:   playerID,
 			TeamID:     teamID,
@@ -230,34 +273,24 @@ func (s *PlayerScraper) processTeamRoster(ctx context.Context, team sqlc.NflTeam
 		})
 	}
 
-	// If no players to process, return early
 	if len(playerDataList) == 0 {
 		log.Printf("No valid players found for team %s", teamName)
 		return 0, nil
 	}
 
-	log.Printf("Processed details for %d players on %s roster, saving to database...",
-		len(playerDataList), teamName)
+	log.Printf("Processed details for %d players on %s roster, saving to database...", len(playerDataList), teamName)
 
-	// Start a transaction for the batch insert/update
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	// Create a queries object with the transaction
-	q := s.DB.Queries.WithTx(tx)
+	// Construct bulk insert parameters
+	bulkParams := make([]sqlc.UpsertNFLPlayerParams, 0, len(playerDataList))
 
-	// Counter for successful inserts/updates
-	successCount := 0
-
-	// Process each player in the transaction
 	for _, playerData := range playerDataList {
-		playerID := playerData.PlayerID
-		teamID := playerData.TeamID
 		playerResponse := playerData.PlayerInfo
 
-		// Determine which URL to use for the player's image
 		imageURL := playerResponse.HeadshotImgURL
 		if imageURL == "" {
 			imageURL = playerResponse.HeadshotImgHref
@@ -266,26 +299,23 @@ func (s *PlayerScraper) processTeamRoster(ctx context.Context, team sqlc.NflTeam
 			imageURL = playerResponse.Headshot.Href
 		}
 
-		// Get status value
 		statusValue := ""
 		if playerResponse.Status.Name != "" {
 			statusValue = playerResponse.Status.Name
 		}
 
-		// Get experience value
 		experienceValue := 0
 		if playerResponse.Experience.Years > 0 {
 			experienceValue = playerResponse.Experience.Years
 		}
 
-		// Create player parameters
-		playerParams := sqlc.CreateNFLPlayerParams{
-			PlayerID:   playerID,
+		playerParams := sqlc.UpsertNFLPlayerParams{
+			PlayerID:   playerData.PlayerID,
 			FirstName:  playerResponse.FirstName,
 			LastName:   playerResponse.LastName,
 			FullName:   playerResponse.FullName,
 			Position:   playerResponse.Position.Abbreviation,
-			TeamID:     sql.NullString{String: teamID, Valid: teamID != ""},
+			TeamID:     sql.NullString{String: playerData.TeamID, Valid: playerData.TeamID != ""},
 			Jersey:     sql.NullString{String: playerResponse.Jersey, Valid: playerResponse.Jersey != ""},
 			Height:     sql.NullInt64{Int64: int64(playerResponse.Height), Valid: playerResponse.Height > 0},
 			Weight:     sql.NullInt64{Int64: int64(playerResponse.Weight), Valid: playerResponse.Weight > 0},
@@ -299,54 +329,25 @@ func (s *PlayerScraper) processTeamRoster(ctx context.Context, team sqlc.NflTeam
 			ImageUrl:   sql.NullString{String: imageURL, Valid: imageURL != ""},
 		}
 
-		// Check if player exists
-		_, err = q.GetNFLPlayer(ctx, playerID)
-		if err == nil {
-			// Update existing player
-			updateParams := sqlc.UpdateNFLPlayerParams{
-				PlayerID:   playerParams.PlayerID,
-				FirstName:  playerParams.FirstName,
-				LastName:   playerParams.LastName,
-				FullName:   playerParams.FullName,
-				Position:   playerParams.Position,
-				TeamID:     playerParams.TeamID,
-				Jersey:     playerParams.Jersey,
-				Height:     playerParams.Height,
-				Weight:     playerParams.Weight,
-				Active:     playerParams.Active,
-				College:    playerParams.College,
-				Experience: playerParams.Experience,
-				DraftYear:  playerParams.DraftYear,
-				DraftRound: playerParams.DraftRound,
-				DraftPick:  playerParams.DraftPick,
-				Status:     playerParams.Status,
-				ImageUrl:   playerParams.ImageUrl,
-			}
-
-			if err := q.UpdateNFLPlayer(ctx, updateParams); err != nil {
-				log.Printf("Error updating player %s: %v", playerID, err)
-			} else {
-				successCount++
-			}
-		} else {
-			// Insert new player
-			if err := q.CreateNFLPlayer(ctx, playerParams); err != nil {
-				log.Printf("Error inserting player %s: %v", playerID, err)
-			} else {
-				successCount++
-			}
-		}
+		bulkParams = append(bulkParams, playerParams)
 	}
 
-	// Commit the transaction
+	// Perform bulk insert
+	err = insertNFLPlayersBulk(ctx, tx, bulkParams)
+	if err != nil {
+		log.Printf("Error inserting bulk players for team %s: %v", teamName, err)
+		_ = tx.Rollback()
+		return 0, err
+	}
+
 	if err := tx.Commit(); err != nil {
-		return successCount, fmt.Errorf("failed to commit transaction: %w", err)
+		return 0, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	log.Printf("Successfully saved %d/%d players for team %s to database",
-		successCount, len(playerDataList), teamName)
+		len(bulkParams), len(playerDataList), teamName)
 
-	return successCount, nil
+	return len(bulkParams), nil
 }
 
 // fetchTeamRoster fetches the roster for a specific team

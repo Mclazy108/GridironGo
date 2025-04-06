@@ -90,6 +90,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateNFLTeamStmt, err = db.PrepareContext(ctx, updateNFLTeam); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateNFLTeam: %w", err)
 	}
+	if q.upsertNFLPlayerStmt, err = db.PrepareContext(ctx, upsertNFLPlayer); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertNFLPlayer: %w", err)
+	}
 	return &q, nil
 }
 
@@ -205,6 +208,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateNFLTeamStmt: %w", cerr)
 		}
 	}
+	if q.upsertNFLPlayerStmt != nil {
+		if cerr := q.upsertNFLPlayerStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertNFLPlayerStmt: %w", cerr)
+		}
+	}
 	return err
 }
 
@@ -266,6 +274,7 @@ type Queries struct {
 	updateGameStmt                 *sql.Stmt
 	updateNFLPlayerStmt            *sql.Stmt
 	updateNFLTeamStmt              *sql.Stmt
+	upsertNFLPlayerStmt            *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
@@ -294,5 +303,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateGameStmt:                 q.updateGameStmt,
 		updateNFLPlayerStmt:            q.updateNFLPlayerStmt,
 		updateNFLTeamStmt:              q.updateNFLTeamStmt,
+		upsertNFLPlayerStmt:            q.upsertNFLPlayerStmt,
 	}
 }
