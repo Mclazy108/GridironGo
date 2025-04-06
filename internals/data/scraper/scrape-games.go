@@ -8,7 +8,7 @@ import (
 	"github.com/Mclazy108/GridironGo/internals/data/sqlc"
 	"log"
 	"net/http"
-	"time"
+	//"time"
 )
 
 // NFLScraper handles fetching and storing NFL data
@@ -194,13 +194,15 @@ func (s *NFLScraper) ScrapeNFLGames(ctx context.Context, seasons []int) error {
 			}
 
 			// Sleep to avoid rate limiting, but make it interruptible
-			select {
-			case <-ctx.Done():
-				log.Println("Scraping cancelled by user during rate limit sleep")
-				return nil
-			case <-time.After(500 * time.Millisecond):
-				// Continue with the next week
-			}
+			/*
+				select {
+				case <-ctx.Done():
+					log.Println("Scraping cancelled by user during rate limit sleep")
+					return nil
+				case <-time.After(500 * time.Millisecond):
+					// Continue with the next week
+				}
+			*/
 		}
 	}
 

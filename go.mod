@@ -2,7 +2,10 @@ module github.com/Mclazy108/GridironGo
 
 go 1.24.1
 
-require github.com/mattn/go-sqlite3 v1.14.24
+require (
+	github.com/mattn/go-sqlite3 v1.14.24
+	golang.org/x/time v0.11.0
+)
 
 require (
 	cel.dev/expr v0.19.1 // indirect
@@ -77,7 +80,6 @@ require (
 	golang.org/x/sync v0.12.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
-	golang.org/x/time v0.11.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250324211829-b45e905df463 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250324211829-b45e905df463 // indirect

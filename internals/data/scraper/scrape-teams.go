@@ -10,7 +10,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"time"
+	//"time"
 )
 
 // TeamScraper handles fetching and storing NFL team data
@@ -180,13 +180,15 @@ func (s *TeamScraper) ScrapeNFLTeams(ctx context.Context) error {
 		log.Printf("Inserted team: %s (ID: %s)", teamDetails.DisplayName, teamItem.ID)
 
 		// Sleep to avoid rate limiting, but make it interruptible
-		select {
-		case <-ctx.Done():
-			log.Println("Scraping cancelled by user during rate limit sleep")
-			return nil
-		case <-time.After(300 * time.Millisecond):
-			// Continue with the next team
-		}
+		/*
+			select {
+			case <-ctx.Done():
+				log.Println("Scraping cancelled by user during rate limit sleep")
+				return nil
+			case <-time.After(300 * time.Millisecond):
+				// Continue with the next team
+			}
+		*/
 	}
 
 	log.Println("NFL teams scraping completed successfully")
