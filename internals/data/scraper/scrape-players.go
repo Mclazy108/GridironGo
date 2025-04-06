@@ -15,56 +15,80 @@ import (
 	"github.com/Mclazy108/GridironGo/internals/data/sqlc"
 )
 
+// PlayerScraper handles fetching and storing NFL player data
 type PlayerScraper struct {
 	DB *data.DB
 }
 
+// NewPlayerScraper creates a new scraper for NFL player data
 func NewPlayerScraper(db *data.DB) *PlayerScraper {
-	return &PlayerScraper{DB: db}
+	return &PlayerScraper{
+		DB: db,
+	}
 }
 
-// TeamRosterResponse represents the response format from ESPN team roster API
-type TeamRosterResponse struct {
-	Items []struct {
-		Ref string `json:"$ref"`
-	} `json:"items"`
-}
-
-// PlayerDetails represents the response format from ESPN player overview API
-type PlayerDetailsResponse struct {
-	Athlete struct {
-		ID          string `json:"id"`
-		FirstName   string `json:"firstName"`
-		LastName    string `json:"lastName"`
-		FullName    string `json:"fullName"`
-		DisplayName string `json:"displayName"`
-		ShortName   string `json:"shortName"`
-		Weight      int    `json:"weight"`
-		Height      int    `json:"height"`
-		Jersey      string `json:"jersey"`
-		Position    struct {
-			Name         string `json:"name"`
-			Abbreviation string `json:"abbreviation"`
-		} `json:"position"`
-		Active     bool `json:"active"`
-		Experience int  `json:"experience"`
-		College    struct {
-			Name string `json:"name"`
-		} `json:"college"`
-		Status string `json:"status"`
-		Team   struct {
+// ESPNPlayerResponse represents the direct player data structure from ESPN API
+type ESPNPlayerResponse struct {
+	ID          string  `json:"id"`
+	UID         string  `json:"uid"`
+	GUID        string  `json:"guid"`
+	FirstName   string  `json:"firstName"`
+	LastName    string  `json:"lastName"`
+	FullName    string  `json:"fullName"`
+	DisplayName string  `json:"displayName"`
+	ShortName   string  `json:"shortName"`
+	Weight      float64 `json:"weight"` // Using float64 as API returns decimal values like 213.0
+	Height      float64 `json:"height"` // Using float64 as API returns decimal values like 74.0
+	Jersey      string  `json:"jersey"`
+	Age         int     `json:"age,omitempty"` // Age is optional as it might not always be present
+	DateOfBirth string  `json:"dateOfBirth,omitempty"`
+	Position    struct {
+		ID           string `json:"id"`
+		Name         string `json:"name"`
+		Abbreviation string `json:"abbreviation"`
+		DisplayName  string `json:"displayName"`
+	} `json:"position"`
+	Team struct {
+		ID           string `json:"id"`
+		UID          string `json:"uid"`
+		Slug         string `json:"slug"`
+		Location     string `json:"location"`
+		Name         string `json:"name"`
+		Abbreviation string `json:"abbreviation"`
+		DisplayName  string `json:"displayName"`
+		ShortName    string `json:"shortName"`
+		Color        string `json:"color"`
+	} `json:"team"`
+	College struct {
+		ID           string `json:"id"`
+		Name         string `json:"name"`
+		Abbreviation string `json:"abbreviation"`
+	} `json:"college"`
+	Status struct {
+		ID           string `json:"id"`
+		Name         string `json:"name"`
+		Type         string `json:"type"`
+		Abbreviation string `json:"abbreviation"`
+	} `json:"status"`
+	Experience struct {
+		Years int `json:"years"`
+	} `json:"experience"`
+	Active          bool   `json:"active"`
+	HeadshotImgURL  string `json:"headshotImgUrl,omitempty"`  // Image URL may be at this level
+	HeadshotImgHref string `json:"headshotImgHref,omitempty"` // Or might be here
+	Draft           struct {
+		Year      int `json:"year"`
+		Round     int `json:"round"`
+		Selection int `json:"selection"`
+		Team      struct {
 			ID           string `json:"id"`
 			DisplayName  string `json:"displayName"`
 			Abbreviation string `json:"abbreviation"`
 		} `json:"team"`
-		Draft struct {
-			Year      int `json:"year"`
-			Round     int `json:"round"`
-			Selection int `json:"selection"`
-		} `json:"draft"`
-	} `json:"athlete"`
+	} `json:"draft"`
 	Headshot struct {
-		Href string `json:"href"`
+		Href string `json:"href"` // Or might be in this nested structure
+		Alt  string `json:"alt"`
 	} `json:"headshot"`
 }
 
@@ -78,7 +102,7 @@ func (s *PlayerScraper) ScrapeNFLPlayers(ctx context.Context) error {
 		return fmt.Errorf("failed to fetch NFL teams from database: %w", err)
 	}
 
-	log.Printf("Found %d teams. Fetching player data from team rosters", len(teams))
+	log.Printf("Found %d teams. Will fetch player data from team rosters", len(teams))
 
 	// Track processed players to avoid duplicates
 	processedPlayers := make(map[string]bool)
@@ -148,7 +172,7 @@ func (s *PlayerScraper) ScrapeNFLPlayers(ctx context.Context) error {
 	return nil
 }
 
-// fetchTeamRoster fetches the list of player IDs for a specific team
+// fetchTeamRoster fetches the roster for a specific team
 func (s *PlayerScraper) fetchTeamRoster(ctx context.Context, teamID string) ([]string, error) {
 	// Construct the API URL for team roster
 	url := fmt.Sprintf("https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2024/teams/%s/athletes?limit=200", teamID)
@@ -159,7 +183,7 @@ func (s *PlayerScraper) fetchTeamRoster(ctx context.Context, teamID string) ([]s
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Set headers
+	// Set headers to make it look like a browser request
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
 	req.Header.Set("Accept", "application/json")
 
@@ -180,7 +204,12 @@ func (s *PlayerScraper) fetchTeamRoster(ctx context.Context, teamID string) ([]s
 	}
 
 	// Parse the JSON response
-	var rosterResponse TeamRosterResponse
+	var rosterResponse struct {
+		Items []struct {
+			Ref string `json:"$ref"`
+		} `json:"items"`
+	}
+
 	if err := json.NewDecoder(resp.Body).Decode(&rosterResponse); err != nil {
 		return nil, fmt.Errorf("failed to decode JSON response: %w", err)
 	}
@@ -208,9 +237,10 @@ func (s *PlayerScraper) fetchTeamRoster(ctx context.Context, teamID string) ([]s
 }
 
 // fetchPlayerDetails fetches detailed information for a specific player
-func (s *PlayerScraper) fetchPlayerDetails(ctx context.Context, playerID string) (*PlayerDetailsResponse, error) {
+func (s *PlayerScraper) fetchPlayerDetails(ctx context.Context, playerID string) (*ESPNPlayerResponse, error) {
 	// Construct the API URL for player details
-	url := fmt.Sprintf("https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/%s/overview", playerID)
+	// Using the direct athlete endpoint from ESPN API
+	url := fmt.Sprintf("https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/athletes/%s", playerID)
 
 	// Create a new request with context
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -218,7 +248,7 @@ func (s *PlayerScraper) fetchPlayerDetails(ctx context.Context, playerID string)
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Set headers
+	// Set headers to make it look like a browser request
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
 	req.Header.Set("Accept", "application/json")
 
@@ -238,8 +268,13 @@ func (s *PlayerScraper) fetchPlayerDetails(ctx context.Context, playerID string)
 		return nil, fmt.Errorf("API returned non-OK status: %d. Response: %s", resp.StatusCode, string(body))
 	}
 
+	// For debugging, optionally log the raw response
+	// body, _ := io.ReadAll(resp.Body)
+	// log.Printf("Raw player response: %s", string(body))
+	// resp.Body = io.NopCloser(bytes.NewBuffer(body))
+
 	// Parse the JSON response
-	var playerResponse PlayerDetailsResponse
+	var playerResponse ESPNPlayerResponse
 	if err := json.NewDecoder(resp.Body).Decode(&playerResponse); err != nil {
 		return nil, fmt.Errorf("failed to decode JSON response: %w", err)
 	}
@@ -247,73 +282,93 @@ func (s *PlayerScraper) fetchPlayerDetails(ctx context.Context, playerID string)
 	return &playerResponse, nil
 }
 
-// processPlayer processes a single player (fetch details and update/insert in database)
+// processPlayer handles a single player (fetch details and update database)
 func (s *PlayerScraper) processPlayer(ctx context.Context, playerID string) error {
-	// Fetch player details
+	// Fetch player details from the ESPN API
 	playerResponse, err := s.fetchPlayerDetails(ctx, playerID)
 	if err != nil {
 		return fmt.Errorf("error fetching player details: %w", err)
 	}
 
-	// Extract player details from response
-	player := playerResponse.Athlete
+	// Determine which URL to use for the player's image
+	imageURL := playerResponse.HeadshotImgURL
+	if imageURL == "" {
+		imageURL = playerResponse.HeadshotImgHref
+	}
+	if imageURL == "" && playerResponse.Headshot.Href != "" {
+		imageURL = playerResponse.Headshot.Href
+	}
 
 	// Skip players without position data
-	if player.Position.Abbreviation == "" {
-		log.Printf("Skipping player %s - no position data", player.FullName)
+	if playerResponse.Position.Abbreviation == "" {
+		log.Printf("Skipping player %s - no position data", playerResponse.FullName)
 		return nil
 	}
 
-	// Check if player already exists in the database
+	// Get status value (use Name field from the Status struct)
+	statusValue := ""
+	if playerResponse.Status.Name != "" {
+		statusValue = playerResponse.Status.Name
+	}
+
+	// Get experience value (either from Years field or the whole int)
+	experienceValue := 0
+	if playerResponse.Experience.Years > 0 {
+		experienceValue = playerResponse.Experience.Years
+	}
+
+	// Check if player already exists in database
 	_, err = s.DB.Queries.GetNFLPlayer(ctx, playerID)
+
+	// Set up database parameters
+	playerParams := sqlc.CreateNFLPlayerParams{
+		PlayerID:   playerID,
+		FirstName:  playerResponse.FirstName,
+		LastName:   playerResponse.LastName,
+		FullName:   playerResponse.FullName,
+		Position:   playerResponse.Position.Abbreviation,
+		TeamID:     sql.NullString{String: playerResponse.Team.ID, Valid: playerResponse.Team.ID != ""},
+		Jersey:     sql.NullString{String: playerResponse.Jersey, Valid: playerResponse.Jersey != ""},
+		Height:     sql.NullInt64{Int64: int64(playerResponse.Height), Valid: playerResponse.Height > 0},
+		Weight:     sql.NullInt64{Int64: int64(playerResponse.Weight), Valid: playerResponse.Weight > 0},
+		Active:     playerResponse.Active,
+		College:    sql.NullString{String: playerResponse.College.Name, Valid: playerResponse.College.Name != ""},
+		Experience: sql.NullInt64{Int64: int64(experienceValue), Valid: experienceValue >= 0},
+		DraftYear:  sql.NullInt64{Int64: int64(playerResponse.Draft.Year), Valid: playerResponse.Draft.Year > 0},
+		DraftRound: sql.NullInt64{Int64: int64(playerResponse.Draft.Round), Valid: playerResponse.Draft.Round > 0},
+		DraftPick:  sql.NullInt64{Int64: int64(playerResponse.Draft.Selection), Valid: playerResponse.Draft.Selection > 0},
+		Status:     sql.NullString{String: statusValue, Valid: statusValue != ""},
+		ImageUrl:   sql.NullString{String: imageURL, Valid: imageURL != ""},
+	}
+
 	if err == nil {
-		// Player exists, update it
+		// Player exists, update
 		updateParams := sqlc.UpdateNFLPlayerParams{
-			PlayerID:   playerID,
-			FirstName:  player.FirstName,
-			LastName:   player.LastName,
-			FullName:   player.FullName,
-			Position:   player.Position.Abbreviation,
-			TeamID:     sql.NullString{String: player.Team.ID, Valid: player.Team.ID != ""},
-			Jersey:     sql.NullString{String: player.Jersey, Valid: player.Jersey != ""},
-			Height:     sql.NullInt64{Int64: int64(player.Height), Valid: player.Height > 0},
-			Weight:     sql.NullInt64{Int64: int64(player.Weight), Valid: player.Weight > 0},
-			Active:     player.Active,
-			College:    sql.NullString{String: player.College.Name, Valid: player.College.Name != ""},
-			Experience: sql.NullInt64{Int64: int64(player.Experience), Valid: player.Experience >= 0},
-			DraftYear:  sql.NullInt64{Int64: int64(player.Draft.Year), Valid: player.Draft.Year > 0},
-			DraftRound: sql.NullInt64{Int64: int64(player.Draft.Round), Valid: player.Draft.Round > 0},
-			DraftPick:  sql.NullInt64{Int64: int64(player.Draft.Selection), Valid: player.Draft.Selection > 0},
-			Status:     sql.NullString{String: player.Status, Valid: player.Status != ""},
-			ImageUrl:   sql.NullString{String: playerResponse.Headshot.Href, Valid: playerResponse.Headshot.Href != ""},
+			PlayerID:   playerParams.PlayerID,
+			FirstName:  playerParams.FirstName,
+			LastName:   playerParams.LastName,
+			FullName:   playerParams.FullName,
+			Position:   playerParams.Position,
+			TeamID:     playerParams.TeamID,
+			Jersey:     playerParams.Jersey,
+			Height:     playerParams.Height,
+			Weight:     playerParams.Weight,
+			Active:     playerParams.Active,
+			College:    playerParams.College,
+			Experience: playerParams.Experience,
+			DraftYear:  playerParams.DraftYear,
+			DraftRound: playerParams.DraftRound,
+			DraftPick:  playerParams.DraftPick,
+			Status:     playerParams.Status,
+			ImageUrl:   playerParams.ImageUrl,
 		}
 
 		if err := s.DB.Queries.UpdateNFLPlayer(ctx, updateParams); err != nil {
 			return fmt.Errorf("error updating player in database: %w", err)
 		}
 	} else {
-		// Player doesn't exist, insert it
-		insertParams := sqlc.CreateNFLPlayerParams{
-			PlayerID:   playerID,
-			FirstName:  player.FirstName,
-			LastName:   player.LastName,
-			FullName:   player.FullName,
-			Position:   player.Position.Abbreviation,
-			TeamID:     sql.NullString{String: player.Team.ID, Valid: player.Team.ID != ""},
-			Jersey:     sql.NullString{String: player.Jersey, Valid: player.Jersey != ""},
-			Height:     sql.NullInt64{Int64: int64(player.Height), Valid: player.Height > 0},
-			Weight:     sql.NullInt64{Int64: int64(player.Weight), Valid: player.Weight > 0},
-			Active:     player.Active,
-			College:    sql.NullString{String: player.College.Name, Valid: player.College.Name != ""},
-			Experience: sql.NullInt64{Int64: int64(player.Experience), Valid: player.Experience >= 0},
-			DraftYear:  sql.NullInt64{Int64: int64(player.Draft.Year), Valid: player.Draft.Year > 0},
-			DraftRound: sql.NullInt64{Int64: int64(player.Draft.Round), Valid: player.Draft.Round > 0},
-			DraftPick:  sql.NullInt64{Int64: int64(player.Draft.Selection), Valid: player.Draft.Selection > 0},
-			Status:     sql.NullString{String: player.Status, Valid: player.Status != ""},
-			ImageUrl:   sql.NullString{String: playerResponse.Headshot.Href, Valid: playerResponse.Headshot.Href != ""},
-		}
-
-		if err := s.DB.Queries.CreateNFLPlayer(ctx, insertParams); err != nil {
+		// Player doesn't exist, insert
+		if err := s.DB.Queries.CreateNFLPlayer(ctx, playerParams); err != nil {
 			return fmt.Errorf("error inserting player into database: %w", err)
 		}
 	}
@@ -321,3 +376,40 @@ func (s *PlayerScraper) processPlayer(ctx context.Context, playerID string) erro
 	return nil
 }
 
+// fetchPlayerImageURL attempts to fetch a player's image URL from the ESPN API
+func (s *PlayerScraper) fetchPlayerImageURL(ctx context.Context, playerID string) (string, error) {
+	// Alternative endpoint that may contain image URLs
+	url := fmt.Sprintf("https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/%s/overview", playerID)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("API returned status %d", resp.StatusCode)
+	}
+
+	var response struct {
+		Athlete struct {
+			HeadShot struct {
+				Href string `json:"href"`
+			} `json:"headshot"`
+		} `json:"athlete"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return "", err
+	}
+
+	return response.Athlete.HeadShot.Href, nil
+}
