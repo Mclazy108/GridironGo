@@ -121,7 +121,7 @@ func (s *PlayerScraper) ScrapeNFLPlayers(ctx context.Context) error {
 
 	// Create a rate limiter to avoid overwhelming the API
 	// Limit to 10 requests per second (adjust as needed)
-	limiter := rate.NewLimiter(2000, 1)
+	limiter := rate.NewLimiter(2500, 1)
 
 	// Create a wait group to wait for all goroutines to finish
 	var wg sync.WaitGroup
