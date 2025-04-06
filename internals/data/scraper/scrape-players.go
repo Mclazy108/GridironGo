@@ -9,10 +9,12 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"time"
+	"sync"
+	"sync/atomic"
 
 	"github.com/Mclazy108/GridironGo/internals/data"
 	"github.com/Mclazy108/GridironGo/internals/data/sqlc"
+	"golang.org/x/time/rate"
 )
 
 // PlayerScraper handles fetching and storing NFL player data
@@ -90,9 +92,17 @@ type ESPNPlayerResponse struct {
 		Href string `json:"href"` // Or might be in this nested structure
 		Alt  string `json:"alt"`
 	} `json:"headshot"`
+	Linked bool `json:"linked"`
 }
 
-// ScrapeNFLPlayers fetches and stores NFL player data
+// PlayerData holds a player's information and their team ID
+type PlayerData struct {
+	PlayerID   string
+	TeamID     string
+	PlayerInfo *ESPNPlayerResponse
+}
+
+// ScrapeNFLPlayers fetches and stores NFL player data with team-based batching
 func (s *PlayerScraper) ScrapeNFLPlayers(ctx context.Context) error {
 	log.Println("Starting NFL players scraping process...")
 
@@ -104,72 +114,239 @@ func (s *PlayerScraper) ScrapeNFLPlayers(ctx context.Context) error {
 
 	log.Printf("Found %d teams. Will fetch player data from team rosters", len(teams))
 
-	// Track processed players to avoid duplicates
-	processedPlayers := make(map[string]bool)
-	totalPlayers := 0
-	successfulPlayers := 0
+	// Track total players for stats
+	var totalPlayers int32 = 0
+	var processedTeams int32 = 0
+	var failedPlayers int32 = 0
 
-	// Process each team
-	for _, team := range teams {
-		// Check if context was cancelled
-		select {
-		case <-ctx.Done():
-			log.Println("Scraping cancelled by user")
-			return ctx.Err()
-		default:
-			// Continue processing
-		}
+	// Create a rate limiter to avoid overwhelming the API
+	// Limit to 10 requests per second (adjust as needed)
+	limiter := rate.NewLimiter(10, 1)
 
-		log.Printf("Processing team: %s (%s)", team.DisplayName, team.TeamID)
+	// Create a wait group to wait for all goroutines to finish
+	var wg sync.WaitGroup
 
-		// Fetch team roster
-		playerIDs, err := s.fetchTeamRoster(ctx, team.TeamID)
-		if err != nil {
-			log.Printf("Error fetching roster for team %s: %v", team.DisplayName, err)
+	// Create a channel to process teams
+	teamChan := make(chan *sqlc.NflTeam, len(teams))
+
+	// Number of worker goroutines to process teams
+	numWorkers := 25
+	log.Printf("Starting %d team worker goroutines", numWorkers)
+
+	// Launch worker goroutines
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			for team := range teamChan {
+				log.Printf("Worker %d: Processing team %s", workerID, team.DisplayName)
+
+				// Process the team roster as a batch
+				playersProcessed, err := s.processTeamRoster(ctx, *team, limiter)
+
+				if err != nil {
+					log.Printf("Worker %d: Error processing team %s: %v",
+						workerID, team.DisplayName, err)
+				} else {
+					log.Printf("Worker %d: Successfully processed %d players for team %s",
+						workerID, playersProcessed, team.DisplayName)
+
+					// Increment processed teams counter
+					numProcessed := atomic.AddInt32(&processedTeams, 1)
+					totalPlayers := atomic.AddInt32(&totalPlayers, int32(playersProcessed))
+
+					log.Printf("Progress: %d/%d teams processed, %d total players",
+						numProcessed, len(teams), totalPlayers)
+				}
+			}
+			log.Printf("Worker %d finished", workerID)
+		}(i)
+	}
+
+	// Send teams to workers
+	for i := range teams {
+		teamChan <- teams[i]
+	}
+
+	// Close the team channel when done
+	close(teamChan)
+
+	// Wait for all team workers to finish
+	log.Println("Waiting for all team workers to finish...")
+	wg.Wait()
+
+	log.Printf("Processed %d teams with %d total players (%d failed)",
+		len(teams), totalPlayers, failedPlayers)
+	log.Println("NFL players scraping completed")
+	return nil
+}
+
+// processTeamRoster fetches and processes an entire team's roster in a single transaction
+func (s *PlayerScraper) processTeamRoster(ctx context.Context, team sqlc.NflTeam, limiter *rate.Limiter) (int, error) {
+	teamID := team.TeamID
+	teamName := team.DisplayName
+
+	// Fetch the team's roster
+	if err := limiter.Wait(ctx); err != nil {
+		return 0, fmt.Errorf("rate limiter error: %w", err)
+	}
+
+	playerIDs, err := s.fetchTeamRoster(ctx, teamID)
+	if err != nil {
+		return 0, fmt.Errorf("error fetching roster for team %s: %w", teamName, err)
+	}
+
+	log.Printf("Found %d players on %s roster, fetching player details", len(playerIDs), teamName)
+
+	// Collect player data
+	playerDataList := make([]PlayerData, 0, len(playerIDs))
+
+	// Fetch details for all players in the roster
+	for _, playerID := range playerIDs {
+		// Rate limit API calls
+		if err := limiter.Wait(ctx); err != nil {
+			log.Printf("Rate limiter error while fetching player %s: %v", playerID, err)
 			continue
 		}
 
-		log.Printf("Found %d players on %s roster", len(playerIDs), team.DisplayName)
+		// Fetch player details
+		playerResponse, err := s.fetchPlayerDetails(ctx, playerID)
+		if err != nil {
+			log.Printf("Error fetching details for player ID %s: %v", playerID, err)
+			continue
+		}
 
-		// Process each player in the roster
-		for _, playerID := range playerIDs {
-			// Skip if we've already processed this player
-			if processedPlayers[playerID] {
-				continue
+		// Skip players without position data
+		if playerResponse.Position.Abbreviation == "" {
+			log.Printf("Skipping player %s - no position data", playerResponse.FullName)
+			continue
+		}
+
+		// Add to player data list
+		playerDataList = append(playerDataList, PlayerData{
+			PlayerID:   playerID,
+			TeamID:     teamID,
+			PlayerInfo: playerResponse,
+		})
+	}
+
+	// If no players to process, return early
+	if len(playerDataList) == 0 {
+		log.Printf("No valid players found for team %s", teamName)
+		return 0, nil
+	}
+
+	log.Printf("Processed details for %d players on %s roster, saving to database...",
+		len(playerDataList), teamName)
+
+	// Start a transaction for the batch insert/update
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	// Create a queries object with the transaction
+	q := s.DB.Queries.WithTx(tx)
+
+	// Counter for successful inserts/updates
+	successCount := 0
+
+	// Process each player in the transaction
+	for _, playerData := range playerDataList {
+		playerID := playerData.PlayerID
+		teamID := playerData.TeamID
+		playerResponse := playerData.PlayerInfo
+
+		// Determine which URL to use for the player's image
+		imageURL := playerResponse.HeadshotImgURL
+		if imageURL == "" {
+			imageURL = playerResponse.HeadshotImgHref
+		}
+		if imageURL == "" && playerResponse.Headshot.Href != "" {
+			imageURL = playerResponse.Headshot.Href
+		}
+
+		// Get status value
+		statusValue := ""
+		if playerResponse.Status.Name != "" {
+			statusValue = playerResponse.Status.Name
+		}
+
+		// Get experience value
+		experienceValue := 0
+		if playerResponse.Experience.Years > 0 {
+			experienceValue = playerResponse.Experience.Years
+		}
+
+		// Create player parameters
+		playerParams := sqlc.CreateNFLPlayerParams{
+			PlayerID:   playerID,
+			FirstName:  playerResponse.FirstName,
+			LastName:   playerResponse.LastName,
+			FullName:   playerResponse.FullName,
+			Position:   playerResponse.Position.Abbreviation,
+			TeamID:     sql.NullString{String: teamID, Valid: teamID != ""},
+			Jersey:     sql.NullString{String: playerResponse.Jersey, Valid: playerResponse.Jersey != ""},
+			Height:     sql.NullInt64{Int64: int64(playerResponse.Height), Valid: playerResponse.Height > 0},
+			Weight:     sql.NullInt64{Int64: int64(playerResponse.Weight), Valid: playerResponse.Weight > 0},
+			Active:     playerResponse.Active,
+			College:    sql.NullString{String: playerResponse.College.Name, Valid: playerResponse.College.Name != ""},
+			Experience: sql.NullInt64{Int64: int64(experienceValue), Valid: experienceValue >= 0},
+			DraftYear:  sql.NullInt64{Int64: int64(playerResponse.Draft.Year), Valid: playerResponse.Draft.Year > 0},
+			DraftRound: sql.NullInt64{Int64: int64(playerResponse.Draft.Round), Valid: playerResponse.Draft.Round > 0},
+			DraftPick:  sql.NullInt64{Int64: int64(playerResponse.Draft.Selection), Valid: playerResponse.Draft.Selection > 0},
+			Status:     sql.NullString{String: statusValue, Valid: statusValue != ""},
+			ImageUrl:   sql.NullString{String: imageURL, Valid: imageURL != ""},
+		}
+
+		// Check if player exists
+		_, err = q.GetNFLPlayer(ctx, playerID)
+		if err == nil {
+			// Update existing player
+			updateParams := sqlc.UpdateNFLPlayerParams{
+				PlayerID:   playerParams.PlayerID,
+				FirstName:  playerParams.FirstName,
+				LastName:   playerParams.LastName,
+				FullName:   playerParams.FullName,
+				Position:   playerParams.Position,
+				TeamID:     playerParams.TeamID,
+				Jersey:     playerParams.Jersey,
+				Height:     playerParams.Height,
+				Weight:     playerParams.Weight,
+				Active:     playerParams.Active,
+				College:    playerParams.College,
+				Experience: playerParams.Experience,
+				DraftYear:  playerParams.DraftYear,
+				DraftRound: playerParams.DraftRound,
+				DraftPick:  playerParams.DraftPick,
+				Status:     playerParams.Status,
+				ImageUrl:   playerParams.ImageUrl,
 			}
 
-			// Mark this player as processed
-			processedPlayers[playerID] = true
-			totalPlayers++
-
-			// Check if context was cancelled
-			select {
-			case <-ctx.Done():
-				log.Println("Scraping cancelled by user")
-				return ctx.Err()
-			default:
-				// Continue processing
-			}
-
-			// Process the player details
-			if err := s.processPlayer(ctx, playerID); err != nil {
-				log.Printf("Error processing player ID %s: %v", playerID, err)
+			if err := q.UpdateNFLPlayer(ctx, updateParams); err != nil {
+				log.Printf("Error updating player %s: %v", playerID, err)
 			} else {
-				successfulPlayers++
-				if successfulPlayers%10 == 0 {
-					log.Printf("Successfully processed %d/%d players", successfulPlayers, totalPlayers)
-				}
+				successCount++
 			}
-
-			// Sleep briefly to avoid rate limiting
-			time.Sleep(100 * time.Millisecond)
+		} else {
+			// Insert new player
+			if err := q.CreateNFLPlayer(ctx, playerParams); err != nil {
+				log.Printf("Error inserting player %s: %v", playerID, err)
+			} else {
+				successCount++
+			}
 		}
 	}
 
-	log.Printf("Processed %d unique players from team rosters (%d successful, %d failed)",
-		totalPlayers, successfulPlayers, totalPlayers-successfulPlayers)
-	log.Println("NFL players scraping completed")
-	return nil
+	// Commit the transaction
+	if err := tx.Commit(); err != nil {
+		return successCount, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	log.Printf("Successfully saved %d/%d players for team %s to database",
+		successCount, len(playerDataList), teamName)
+
+	return successCount, nil
 }
 
 // fetchTeamRoster fetches the roster for a specific team
@@ -268,11 +445,6 @@ func (s *PlayerScraper) fetchPlayerDetails(ctx context.Context, playerID string)
 		return nil, fmt.Errorf("API returned non-OK status: %d. Response: %s", resp.StatusCode, string(body))
 	}
 
-	// For debugging, optionally log the raw response
-	// body, _ := io.ReadAll(resp.Body)
-	// log.Printf("Raw player response: %s", string(body))
-	// resp.Body = io.NopCloser(bytes.NewBuffer(body))
-
 	// Parse the JSON response
 	var playerResponse ESPNPlayerResponse
 	if err := json.NewDecoder(resp.Body).Decode(&playerResponse); err != nil {
@@ -280,136 +452,4 @@ func (s *PlayerScraper) fetchPlayerDetails(ctx context.Context, playerID string)
 	}
 
 	return &playerResponse, nil
-}
-
-// processPlayer handles a single player (fetch details and update database)
-func (s *PlayerScraper) processPlayer(ctx context.Context, playerID string) error {
-	// Fetch player details from the ESPN API
-	playerResponse, err := s.fetchPlayerDetails(ctx, playerID)
-	if err != nil {
-		return fmt.Errorf("error fetching player details: %w", err)
-	}
-
-	// Determine which URL to use for the player's image
-	imageURL := playerResponse.HeadshotImgURL
-	if imageURL == "" {
-		imageURL = playerResponse.HeadshotImgHref
-	}
-	if imageURL == "" && playerResponse.Headshot.Href != "" {
-		imageURL = playerResponse.Headshot.Href
-	}
-
-	// Skip players without position data
-	if playerResponse.Position.Abbreviation == "" {
-		log.Printf("Skipping player %s - no position data", playerResponse.FullName)
-		return nil
-	}
-
-	// Get status value (use Name field from the Status struct)
-	statusValue := ""
-	if playerResponse.Status.Name != "" {
-		statusValue = playerResponse.Status.Name
-	}
-
-	// Get experience value (either from Years field or the whole int)
-	experienceValue := 0
-	if playerResponse.Experience.Years > 0 {
-		experienceValue = playerResponse.Experience.Years
-	}
-
-	// Check if player already exists in database
-	_, err = s.DB.Queries.GetNFLPlayer(ctx, playerID)
-
-	// Set up database parameters
-	playerParams := sqlc.CreateNFLPlayerParams{
-		PlayerID:   playerID,
-		FirstName:  playerResponse.FirstName,
-		LastName:   playerResponse.LastName,
-		FullName:   playerResponse.FullName,
-		Position:   playerResponse.Position.Abbreviation,
-		TeamID:     sql.NullString{String: playerResponse.Team.ID, Valid: playerResponse.Team.ID != ""},
-		Jersey:     sql.NullString{String: playerResponse.Jersey, Valid: playerResponse.Jersey != ""},
-		Height:     sql.NullInt64{Int64: int64(playerResponse.Height), Valid: playerResponse.Height > 0},
-		Weight:     sql.NullInt64{Int64: int64(playerResponse.Weight), Valid: playerResponse.Weight > 0},
-		Active:     playerResponse.Active,
-		College:    sql.NullString{String: playerResponse.College.Name, Valid: playerResponse.College.Name != ""},
-		Experience: sql.NullInt64{Int64: int64(experienceValue), Valid: experienceValue >= 0},
-		DraftYear:  sql.NullInt64{Int64: int64(playerResponse.Draft.Year), Valid: playerResponse.Draft.Year > 0},
-		DraftRound: sql.NullInt64{Int64: int64(playerResponse.Draft.Round), Valid: playerResponse.Draft.Round > 0},
-		DraftPick:  sql.NullInt64{Int64: int64(playerResponse.Draft.Selection), Valid: playerResponse.Draft.Selection > 0},
-		Status:     sql.NullString{String: statusValue, Valid: statusValue != ""},
-		ImageUrl:   sql.NullString{String: imageURL, Valid: imageURL != ""},
-	}
-
-	if err == nil {
-		// Player exists, update
-		updateParams := sqlc.UpdateNFLPlayerParams{
-			PlayerID:   playerParams.PlayerID,
-			FirstName:  playerParams.FirstName,
-			LastName:   playerParams.LastName,
-			FullName:   playerParams.FullName,
-			Position:   playerParams.Position,
-			TeamID:     playerParams.TeamID,
-			Jersey:     playerParams.Jersey,
-			Height:     playerParams.Height,
-			Weight:     playerParams.Weight,
-			Active:     playerParams.Active,
-			College:    playerParams.College,
-			Experience: playerParams.Experience,
-			DraftYear:  playerParams.DraftYear,
-			DraftRound: playerParams.DraftRound,
-			DraftPick:  playerParams.DraftPick,
-			Status:     playerParams.Status,
-			ImageUrl:   playerParams.ImageUrl,
-		}
-
-		if err := s.DB.Queries.UpdateNFLPlayer(ctx, updateParams); err != nil {
-			return fmt.Errorf("error updating player in database: %w", err)
-		}
-	} else {
-		// Player doesn't exist, insert
-		if err := s.DB.Queries.CreateNFLPlayer(ctx, playerParams); err != nil {
-			return fmt.Errorf("error inserting player into database: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// fetchPlayerImageURL attempts to fetch a player's image URL from the ESPN API
-func (s *PlayerScraper) fetchPlayerImageURL(ctx context.Context, playerID string) (string, error) {
-	// Alternative endpoint that may contain image URLs
-	url := fmt.Sprintf("https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/%s/overview", playerID)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return "", err
-	}
-
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("API returned status %d", resp.StatusCode)
-	}
-
-	var response struct {
-		Athlete struct {
-			HeadShot struct {
-				Href string `json:"href"`
-			} `json:"headshot"`
-		} `json:"athlete"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return "", err
-	}
-
-	return response.Athlete.HeadShot.Href, nil
 }
