@@ -2,13 +2,18 @@ package scraper
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/Mclazy108/GridironGo/internals/data"
-	"github.com/Mclazy108/GridironGo/internals/data/sqlc"
 	"log"
 	"net/http"
-	//"time"
+	"strings"
+	"sync"
+	"sync/atomic"
+
+	"github.com/Mclazy108/GridironGo/internals/data"
+	//"github.com/Mclazy108/GridironGo/internals/data/sqlc"
+	"golang.org/x/time/rate"
 )
 
 // NFLScraper handles fetching and storing NFL data
@@ -48,170 +53,240 @@ type Week struct {
 	Number int `json:"number"`
 }
 
-// ScrapeNFLGames fetches and stores NFL game data for multiple seasons
+// GameWeekJob represents a job to scrape games for a specific season and week
+type GameWeekJob struct {
+	Season int
+	Week   int
+}
+
+// GameData holds processed game data ready for database insertion
+type GameData struct {
+	EventID   int64
+	Date      string
+	Name      string
+	ShortName string
+	Season    int64
+	Week      int64
+	AwayTeam  string
+	HomeTeam  string
+}
+
+// insertNFLGamesBulk performs a bulk insert of game data
+func insertNFLGamesBulk(ctx context.Context, tx *sql.Tx, games []GameData) error {
+	if len(games) == 0 {
+		return nil
+	}
+
+	// Build query
+	query := `INSERT INTO nfl_games (
+		event_id, date, name, short_name, season, week, away_team, home_team
+	) VALUES `
+
+	// Collect value placeholders like (?, ?, ?, ...), (?, ?, ?, ...), ...
+	valueStrings := make([]string, 0, len(games))
+	valueArgs := make([]interface{}, 0, len(games)*8)
+
+	for _, g := range games {
+		valueStrings = append(valueStrings, "(?, ?, ?, ?, ?, ?, ?, ?)")
+		valueArgs = append(valueArgs,
+			g.EventID, g.Date, g.Name, g.ShortName, g.Season, g.Week, g.AwayTeam, g.HomeTeam,
+		)
+	}
+
+	query += strings.Join(valueStrings, ",") +
+		` ON CONFLICT(event_id) DO UPDATE SET
+			date = excluded.date,
+			name = excluded.name,
+			short_name = excluded.short_name,
+			season = excluded.season,
+			week = excluded.week,
+			away_team = excluded.away_team,
+			home_team = excluded.home_team`
+
+	// Prepare + exec
+	_, err := tx.ExecContext(ctx, query, valueArgs...)
+	return err
+}
+
+// ScrapeNFLGames fetches and stores NFL game data for multiple seasons using worker goroutines
 func (s *NFLScraper) ScrapeNFLGames(ctx context.Context, seasons []int) error {
-	log.Println("Starting NFL games scraping process...")
+	log.Println("Starting NFL games scraping process with parallel workers...")
 	log.Println("Press Ctrl+C to cancel the scraping process gracefully")
 
-	for _, year := range seasons {
-		// Check if context was cancelled
-		select {
-		case <-ctx.Done():
-			log.Println("Scraping cancelled by user")
-			return nil
-		default:
-			// Continue processing
-		}
+	// Create a rate limiter to avoid overwhelming the API
+	// Limit to 10 requests per second (adjust as needed)
+	limiter := rate.NewLimiter(10, 1)
 
-		log.Printf("Fetching games for season %d...", year)
+	// Create a wait group to wait for all goroutines to finish
+	var wg sync.WaitGroup
 
-		// Scrape regular season weeks 1-18
-		for week := 1; week <= 18; week++ {
-			// Check if context was cancelled
-			select {
-			case <-ctx.Done():
-				log.Println("Scraping cancelled by user")
-				return nil
-			default:
-				// Continue processing
-			}
+	// Create job channel
+	jobChan := make(chan GameWeekJob, 100)
 
-			log.Printf("Fetching week %d of %d season...", week, year)
+	// Track stats
+	var processedWeeks int32 = 0
+	var totalGames int32 = 0
+	var failedWeeks int32 = 0
 
-			// Fetch games for this week and year
-			events, err := s.fetchEvents(ctx, year, week)
-			if err != nil {
-				log.Printf("Error fetching games for Week %d, Year %d: %v", week, year, err)
-				continue
-			}
+	// Number of worker goroutines to process weeks
+	numWorkers := 18 // One worker per week of NFL season
+	log.Printf("Starting %d week worker goroutines", numWorkers)
 
-			// Insert events into database
-			for _, event := range events {
-				// Check if context was cancelled
-				select {
-				case <-ctx.Done():
-					log.Println("Scraping cancelled by user")
-					return nil
-				default:
-					// Continue processing
+	// Launch worker goroutines
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			for job := range jobChan {
+				log.Printf("Worker %d: Processing Season %d, Week %d",
+					workerID, job.Season, job.Week)
+
+				// Fetch games for this week and year
+				events, err := s.fetchEvents(ctx, job.Season, job.Week, limiter)
+				if err != nil {
+					log.Printf("Worker %d: Error fetching games for Season %d, Week %d: %v",
+						workerID, job.Season, job.Week, err)
+					atomic.AddInt32(&failedWeeks, 1)
+					continue
 				}
 
-				// Convert event ID string to int64
-				var eventID int64
-				_, err := fmt.Sscanf(event.ID, "%d", &eventID)
-				if err != nil {
-					// Try alternate parsing if simple scanf fails
-					var temp int64
-					for i := 0; i < len(event.ID); i++ {
-						if event.ID[i] >= '0' && event.ID[i] <= '9' {
-							temp = temp*10 + int64(event.ID[i]-'0')
+				if len(events) == 0 {
+					log.Printf("Worker %d: No games found for Season %d, Week %d",
+						workerID, job.Season, job.Week)
+					atomic.AddInt32(&processedWeeks, 1)
+					continue
+				}
+
+				// Process events and prepare for bulk insert
+				gameData := make([]GameData, 0, len(events))
+				for _, event := range events {
+					// Convert event ID string to int64
+					var eventID int64
+					_, err := fmt.Sscanf(event.ID, "%d", &eventID)
+					if err != nil {
+						// Try alternate parsing if simple scanf fails
+						var temp int64
+						for i := 0; i < len(event.ID); i++ {
+							if event.ID[i] >= '0' && event.ID[i] <= '9' {
+								temp = temp*10 + int64(event.ID[i]-'0')
+							}
+						}
+
+						if temp > 0 {
+							eventID = temp
+						} else {
+							log.Printf("Worker %d: Error parsing event ID '%s': %v",
+								workerID, event.ID, err)
+							continue
 						}
 					}
 
-					if temp > 0 {
-						eventID = temp
-					} else {
-						log.Printf("Error parsing event ID '%s': %v", event.ID, err)
+					// Extract home and away teams from name
+					awayTeam, homeTeam := extractTeams(event.Name)
+
+					// Skip games where team extraction failed
+					if awayTeam == "" || homeTeam == "" {
+						log.Printf("Worker %d: Skipping game with ID %s due to missing team information",
+							workerID, event.ID)
 						continue
 					}
-				}
 
-				// Extract home and away teams from name
-				awayTeam, homeTeam := extractTeams(event.Name)
-
-				// Skip games where team extraction failed
-				if awayTeam == "" || homeTeam == "" {
-					log.Printf("Skipping game with ID %s due to missing team information", event.ID)
-					continue
-				}
-
-				// Format date for better readability in database
-				formattedDate := event.Date
-				if len(event.Date) >= 10 {
-					formattedDate = event.Date[:10]
-				}
-
-				// Create database parameters
-				params := sqlc.CreateGameParams{
-					EventID:   eventID,
-					Date:      formattedDate,
-					Name:      event.Name,
-					ShortName: event.ShortName,
-					Season:    int64(event.Season.Year),
-					Week:      int64(event.Week.Number),
-					AwayTeam:  awayTeam,
-					HomeTeam:  homeTeam,
-				}
-
-				// Try to get the game first to see if it exists
-				existingGame, err := s.DB.Queries.GetGame(ctx, eventID)
-				if err == nil {
-					// Game exists, check if we need to update it
-					log.Printf("Game with ID %d already exists: %s", eventID, existingGame.Name)
-
-					// Check if game data has changed
-					if existingGame.Date != formattedDate ||
-						existingGame.Name != event.Name ||
-						existingGame.ShortName != event.ShortName {
-
-						// Format date for the update as well
-						formattedDate := event.Date
-						if len(event.Date) >= 10 {
-							formattedDate = event.Date[:10]
-						}
-
-						// Update the game
-						updateParams := sqlc.UpdateGameParams{
-							EventID:   eventID,
-							Date:      formattedDate,
-							Name:      event.Name,
-							ShortName: event.ShortName,
-							Season:    int64(event.Season.Year),
-							Week:      int64(event.Week.Number),
-							AwayTeam:  awayTeam,
-							HomeTeam:  homeTeam,
-						}
-
-						err = s.DB.Queries.UpdateGame(ctx, updateParams)
-						if err != nil {
-							log.Printf("Error updating game with ID %d: %v", eventID, err)
-						} else {
-							log.Printf("Updated game: %s (ID: %d)", event.Name, eventID)
-						}
+					// Format date for better readability in database
+					formattedDate := event.Date
+					if len(event.Date) >= 10 {
+						formattedDate = event.Date[:10]
 					}
 
-					continue
+					gameData = append(gameData, GameData{
+						EventID:   eventID,
+						Date:      formattedDate,
+						Name:      event.Name,
+						ShortName: event.ShortName,
+						Season:    int64(event.Season.Year),
+						Week:      int64(event.Week.Number),
+						AwayTeam:  awayTeam,
+						HomeTeam:  homeTeam,
+					})
 				}
 
-				// Insert new game into database
-				err = s.DB.Queries.CreateGame(ctx, params)
-				if err != nil {
-					log.Printf("Error inserting game with ID %d: %v", eventID, err)
-					continue
+				// Insert into database in a single transaction
+				if len(gameData) > 0 {
+					tx, err := s.DB.BeginTx(ctx, nil)
+					if err != nil {
+						log.Printf("Worker %d: Failed to begin transaction: %v", workerID, err)
+						atomic.AddInt32(&failedWeeks, 1)
+						continue
+					}
+
+					err = insertNFLGamesBulk(ctx, tx, gameData)
+					if err != nil {
+						log.Printf("Worker %d: Error inserting bulk games for Season %d, Week %d: %v",
+							workerID, job.Season, job.Week, err)
+						_ = tx.Rollback()
+						atomic.AddInt32(&failedWeeks, 1)
+						continue
+					}
+
+					if err := tx.Commit(); err != nil {
+						log.Printf("Worker %d: Failed to commit transaction: %v", workerID, err)
+						atomic.AddInt32(&failedWeeks, 1)
+						continue
+					}
+
+					gamesInserted := len(gameData)
+					atomic.AddInt32(&totalGames, int32(gamesInserted))
+					log.Printf("Worker %d: Successfully inserted %d games for Season %d, Week %d",
+						workerID, gamesInserted, job.Season, job.Week)
 				}
 
-				log.Printf("Inserted game: %s (ID: %d)", event.Name, eventID)
+				// Increment counter for processed weeks
+				weeksProcessed := atomic.AddInt32(&processedWeeks, 1)
+				totalJobs := len(seasons) * 18 // Assuming 18 weeks per season
+				log.Printf("Progress: %d/%d weeks processed, %d total games",
+					weeksProcessed, totalJobs, atomic.LoadInt32(&totalGames))
 			}
+			log.Printf("Worker %d finished", workerID)
+		}(i)
+	}
 
-			// Sleep to avoid rate limiting, but make it interruptible
-			/*
-				select {
-				case <-ctx.Done():
-					log.Println("Scraping cancelled by user during rate limit sleep")
-					return nil
-				case <-time.After(500 * time.Millisecond):
-					// Continue with the next week
-				}
-			*/
+	// Create jobs for all seasons and weeks
+	totalJobs := 0
+	for _, year := range seasons {
+		// Scrape regular season weeks 1-18
+		for week := 1; week <= 18; week++ {
+			select {
+			case <-ctx.Done():
+				log.Println("Job creation cancelled by user")
+				close(jobChan)
+				return ctx.Err()
+			default:
+				jobChan <- GameWeekJob{Season: year, Week: week}
+				totalJobs++
+			}
 		}
 	}
 
-	log.Println("NFL games scraping completed successfully")
+	log.Printf("Created %d jobs for %d seasons", totalJobs, len(seasons))
+
+	// Close the job channel when all jobs are queued
+	close(jobChan)
+
+	// Wait for all workers to finish
+	log.Println("Waiting for all workers to finish...")
+	wg.Wait()
+
+	log.Printf("NFL games scraping completed: %d/%d weeks processed, %d total games, %d failed weeks",
+		processedWeeks, totalJobs, totalGames, failedWeeks)
 	return nil
 }
 
 // fetchEvents fetches NFL games for a specific year and week from the ESPN API
-func (s *NFLScraper) fetchEvents(ctx context.Context, year int, week int) ([]Event, error) {
+func (s *NFLScraper) fetchEvents(ctx context.Context, year int, week int, limiter *rate.Limiter) ([]Event, error) {
+	// Wait for rate limiter
+	if err := limiter.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("rate limiter error: %w", err)
+	}
+
 	// Construct the API URL
 	url := fmt.Sprintf("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=%d&seasontype=2&week=%d", year, week)
 
@@ -272,3 +347,4 @@ func extractTeams(gameName string) (string, string) {
 	log.Printf("Failed to extract teams from game name: %s", gameName)
 	return "", ""
 }
+

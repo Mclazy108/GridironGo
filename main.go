@@ -22,6 +22,9 @@ func main() {
 	scrapePlayers := flag.Bool("scrape-players", false, "Scrape NFL player data")
 	dbPath := flag.String("db", "./GridironGo.db", "Path to SQLite database (default: ./GridironGo.db)")
 
+	// Add specific season flags
+	seasons := flag.String("seasons", "2022,2023,2024", "Comma-separated list of seasons to scrape games for")
+
 	// Track durations for summary
 	var (
 		gameDuration   time.Duration
@@ -76,7 +79,7 @@ func main() {
 	// Run game scraping if explicitly requested or running default
 	if *scrapeGames || runDefaultScraping {
 		start := time.Now()
-		err := runGameScraper(ctx, db)
+		err := runGameScraper(ctx, db, *seasons)
 		gameDuration = time.Since(start)
 		if err != nil {
 			log.Printf("Error during game scraping: %v", err)
@@ -127,15 +130,48 @@ func main() {
 	// Here you would normally start your TUI application
 }
 
+// Parse comma-separated seasons string into slice of integers
+func parseSeasons(seasonsStr string) []int {
+	var seasonsInt []int
+	var currentNum int
+
+	for i := 0; i < len(seasonsStr); i++ {
+		c := seasonsStr[i]
+
+		// If we find a digit, process it
+		if c >= '0' && c <= '9' {
+			currentNum = currentNum*10 + int(c-'0')
+		} else if c == ',' {
+			// Add the current number to our list and reset
+			if currentNum > 0 {
+				seasonsInt = append(seasonsInt, currentNum)
+				currentNum = 0
+			}
+		}
+	}
+
+	// Don't forget the last number if there is one
+	if currentNum > 0 {
+		seasonsInt = append(seasonsInt, currentNum)
+	}
+
+	// Default to 2022-2024 if no valid seasons were provided
+	if len(seasonsInt) == 0 {
+		return []int{2022, 2023, 2024}
+	}
+
+	return seasonsInt
+}
+
 // runGameScraper handles the game scraping process
-func runGameScraper(ctx context.Context, db *data.DB) error {
+func runGameScraper(ctx context.Context, db *data.DB, seasonsStr string) error {
 	log.Println("Starting NFL game data scraping...")
 	log.Println("Press Ctrl+C for graceful cancellation")
 
-	scraperInstance := scraper.NewScraper(db)
+	seasons := parseSeasons(seasonsStr)
+	log.Printf("Will scrape games for seasons: %v", seasons)
 
-	// Scrape games for seasons 2022-2024
-	seasons := []int{2022, 2023, 2024}
+	scraperInstance := scraper.NewScraper(db)
 
 	// Count games before scraping
 	games, err := db.Queries.GetAllGames(ctx)
@@ -252,3 +288,4 @@ func runPlayerScraper(ctx context.Context, db *data.DB) error {
 	log.Println("NFL player data scraping completed successfully")
 	return nil
 }
+

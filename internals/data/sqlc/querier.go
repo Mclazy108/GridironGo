@@ -32,6 +32,7 @@ type Querier interface {
 	UpdateGame(ctx context.Context, arg UpdateGameParams) error
 	UpdateNFLPlayer(ctx context.Context, arg UpdateNFLPlayerParams) error
 	UpdateNFLTeam(ctx context.Context, arg UpdateNFLTeamParams) error
+	UpsertGame(ctx context.Context, arg UpsertGameParams) error
 	UpsertNFLPlayer(ctx context.Context, arg UpsertNFLPlayerParams) error
 }
 

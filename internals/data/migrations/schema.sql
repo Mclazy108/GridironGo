@@ -10,6 +10,9 @@ CREATE TABLE nfl_games (
 	home_team TEXT NOT NULL
 );
 
+CREATE INDEX idx_nfl_games_season_week ON nfl_games (season, week);
+CREATE INDEX idx_nfl_games_date ON nfl_games (date);
+
 CREATE TABLE nfl_teams (
     team_id TEXT PRIMARY KEY,
     display_name TEXT NOT NULL,
@@ -48,3 +51,19 @@ CREATE TABLE nfl_players (
 CREATE INDEX idx_nfl_players_team ON nfl_players (team_id);
 CREATE INDEX idx_nfl_players_position ON nfl_players (position);
 CREATE INDEX idx_nfl_players_active ON nfl_players (active);
+
+CREATE TABLE nfl_stats (
+    stat_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    game_id INTEGER NOT NULL,
+    player_id TEXT NOT NULL,
+    team_id TEXT NOT NULL,
+    category TEXT NOT NULL,         -- e.g. 'passing', 'rushing', 'receiving'
+    stat_type TEXT NOT NULL,        -- e.g. 'yards', 'touchdowns', 'interceptions'
+    stat_value REAL NOT NULL,       
+    FOREIGN KEY (game_id) REFERENCES nfl_games(event_id),
+    FOREIGN KEY (player_id) REFERENCES nfl_players(player_id),
+    FOREIGN KEY (team_id) REFERENCES nfl_teams(team_id)
+);
+
+CREATE INDEX idx_nfl_stats_game_player ON nfl_stats (game_id, player_id);
+

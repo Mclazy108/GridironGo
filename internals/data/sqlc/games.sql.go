@@ -189,3 +189,43 @@ func (q *Queries) UpdateGame(ctx context.Context, arg UpdateGameParams) error {
 	)
 	return err
 }
+
+const upsertGame = `-- name: UpsertGame :exec
+INSERT INTO nfl_games (
+  event_id, date, name, short_name, season, week, away_team, home_team
+) VALUES (
+  ?, ?, ?, ?, ?, ?, ?, ?
+) ON CONFLICT(event_id) DO UPDATE SET
+  date = excluded.date,
+  name = excluded.name,
+  short_name = excluded.short_name,
+  season = excluded.season,
+  week = excluded.week,
+  away_team = excluded.away_team,
+  home_team = excluded.home_team
+`
+
+type UpsertGameParams struct {
+	EventID   int64  `json:"event_id"`
+	Date      string `json:"date"`
+	Name      string `json:"name"`
+	ShortName string `json:"short_name"`
+	Season    int64  `json:"season"`
+	Week      int64  `json:"week"`
+	AwayTeam  string `json:"away_team"`
+	HomeTeam  string `json:"home_team"`
+}
+
+func (q *Queries) UpsertGame(ctx context.Context, arg UpsertGameParams) error {
+	_, err := q.exec(ctx, q.upsertGameStmt, upsertGame,
+		arg.EventID,
+		arg.Date,
+		arg.Name,
+		arg.ShortName,
+		arg.Season,
+		arg.Week,
+		arg.AwayTeam,
+		arg.HomeTeam,
+	)
+	return err
+}
