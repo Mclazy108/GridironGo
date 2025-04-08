@@ -141,7 +141,7 @@ func (s *StatScraper) ScrapeNFLGameStats(ctx context.Context, seasons []int) err
 	gameChan := make(chan *sqlc.NflGame, len(games))
 
 	// Number of worker goroutines to process games
-	numWorkers := 8
+	numWorkers := 15
 	log.Printf("Starting %d game worker goroutines", numWorkers)
 
 	// Launch worker goroutines
@@ -291,6 +291,10 @@ func (s *StatScraper) processGameStats(ctx context.Context, game sqlc.NflGame, l
 	// Insert each stat
 	insertCount := 0
 	for _, stat := range stats {
+
+		if stat.StatValue == 0 {
+			continue
+		}
 		// First check if this stat already exists
 		var statID int64
 		err := tx.QueryRowContext(ctx, `
@@ -453,6 +457,10 @@ func (s *StatScraper) extractGameStats(ctx context.Context, summary *ESPNGameSum
 					}
 
 					rawStat := athlete.Stats[keyIndex]
+					if rawStat == "" || rawStat == "--" {
+						continue
+					}
+
 					statValue, err := parseStatValue(rawStat)
 					if err != nil {
 						log.Printf("Could not parse stat value '%s' for player %s (ID: %s), category: %s, key: %s — error: %v",
@@ -474,51 +482,54 @@ func (s *StatScraper) extractGameStats(ctx context.Context, summary *ESPNGameSum
 	}
 
 	// Process leaders data with the same validation
-	for _, teamLeader := range summary.Leaders {
-		teamID := teamLeader.Team.ID
+	/*
+		for _, teamLeader := range summary.Leaders {
+			teamID := teamLeader.Team.ID
 
-		// Skip if team ID is not valid
-		if !validTeamIDs[teamID] {
-			log.Printf("Warning: skipping leader stats for team ID %s (not found in database)", teamID)
-			continue
-		}
+			// Skip if team ID is not valid
+			if !validTeamIDs[teamID] {
+				log.Printf("Warning: skipping leader stats for team ID %s (not found in database)", teamID)
+				continue
+			}
 
-		for _, leaderCategory := range teamLeader.Leaders {
-			category := leaderCategory.Name
-			log.Printf("Debug: Leader Category: %s", category)
+			for _, leaderCategory := range teamLeader.Leaders {
+				category := leaderCategory.Name
+				log.Printf("Debug: Leader Category: %s", category)
 
-			for _, leader := range leaderCategory.Leaders {
-				playerID := leader.Athlete.ID
-				log.Printf("Debug: Leader: %s, Value: %f", leader.Athlete.Name, leader.Value)
+				for _, leader := range leaderCategory.Leaders {
+					playerID := leader.Athlete.ID
+					log.Printf("Debug: Leader: %s, Value: %f", leader.Athlete.Name, leader.Value)
 
-				// Skip if player ID is not valid
-				if !validPlayerIDs[playerID] {
-					log.Printf("Warning: skipping leader stats for player ID %s (not found in database)", playerID)
-					continue
+					// Skip if player ID is not valid
+					if !validPlayerIDs[playerID] {
+						log.Printf("Warning: skipping leader stats for player ID %s (not found in database)", playerID)
+						continue
+					}
+
+					statValue := leader.Value
+
+					// Use DisplayName as stat type if available
+					statType := leaderCategory.DisplayName
+					if statType == "" {
+						statType = category
+					}
+
+					log.Printf("Debug: Extracted leader stat - Player: %s, Category: %s, Type: %s, Value: %f",
+						leader.Athlete.Name, category, statType, statValue)
+
+					stats = append(stats, StatData{
+						GameID:    gameID,
+						PlayerID:  playerID,
+						TeamID:    teamID,
+						Category:  category,
+						StatType:  statType,
+						StatValue: statValue,
+					})
 				}
-
-				statValue := leader.Value
-
-				// Use DisplayName as stat type if available
-				statType := leaderCategory.DisplayName
-				if statType == "" {
-					statType = category
-				}
-
-				log.Printf("Debug: Extracted leader stat - Player: %s, Category: %s, Type: %s, Value: %f",
-					leader.Athlete.Name, category, statType, statValue)
-
-				stats = append(stats, StatData{
-					GameID:    gameID,
-					PlayerID:  playerID,
-					TeamID:    teamID,
-					Category:  category,
-					StatType:  statType,
-					StatValue: statValue,
-				})
 			}
 		}
-	}
+	*/
+	///
 
 	return stats, nil
 }
@@ -526,13 +537,31 @@ func (s *StatScraper) extractGameStats(ctx context.Context, summary *ESPNGameSum
 // parseStatValue converts a string stat value to a float64
 
 func parseStatValue(raw string) (float64, error) {
-	// Handle empty or dash values
 	raw = strings.TrimSpace(raw)
 	if raw == "" || raw == "--" {
 		return 0, nil
 	}
+	// Remove trailing percentage if it exists.
+	raw = strings.TrimSuffix(raw, "%")
 
-	// Handle slashes like "26/31" — return the first value as float
+	// Handle time format like "29:30"
+	if strings.Contains(raw, ":") {
+		parts := strings.Split(raw, ":")
+		if len(parts) == 2 {
+			minutes, err := strconv.ParseFloat(parts[0], 64)
+			if err != nil {
+				return 0, err
+			}
+			seconds, err := strconv.ParseFloat(parts[1], 64)
+			if err != nil {
+				return 0, err
+			}
+			// Example: return total seconds
+			return minutes*60 + seconds, nil
+		}
+	}
+
+	// Handle slashes (e.g. "21/31")
 	if strings.Contains(raw, "/") {
 		parts := strings.Split(raw, "/")
 		if len(parts) > 0 {
@@ -540,14 +569,14 @@ func parseStatValue(raw string) (float64, error) {
 		}
 	}
 
-	// Handle dashes like "2-5" — return the first value as float
-	if strings.Contains(raw, "-") {
+	// Only split on '-' if it is not at the start (to avoid negative numbers)
+	if strings.Contains(raw, "-") && !strings.HasPrefix(raw, "-") {
 		parts := strings.Split(raw, "-")
 		if len(parts) > 0 {
 			return strconv.ParseFloat(parts[0], 64)
 		}
 	}
 
-	// Parse as float (covers integers and decimals)
+	// Default: attempt to parse the raw value as a float.
 	return strconv.ParseFloat(raw, 64)
 }

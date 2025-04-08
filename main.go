@@ -158,19 +158,25 @@ func main() {
 
 	// If specific scraping flags were provided or default scraping was run, exit
 	if *scrapeGames || *scrapeTeams || *scrapePlayers || *scrapeStats || runDefaultScraping {
+		// Get record counts for summary
+		gameCount, _ := getGameCount(ctx, db)
+		teamCount, _ := getTeamCount(ctx, db)
+		playerCount, _ := getPlayerCount(ctx, db)
+		statCount, _ := getStatCount(ctx, db)
+
 		log.Println("------------------------------------------------")
 		log.Println("🏁 Scraping Summary:")
 		if *scrapeGames || runDefaultScraping {
-			log.Printf("⏱  Games scraped in:   %s", gameDuration)
+			log.Printf("⏱  Games scraped in:   %s (Total records: %d)", gameDuration, gameCount)
 		}
 		if *scrapeTeams || runDefaultScraping {
-			log.Printf("⏱  Teams scraped in:   %s", teamDuration)
+			log.Printf("⏱  Teams scraped in:   %s (Total records: %d)", teamDuration, teamCount)
 		}
 		if *scrapePlayers || runDefaultScraping {
-			log.Printf("⏱  Players scraped in: %s", playerDuration)
+			log.Printf("⏱  Players scraped in: %s (Total records: %d)", playerDuration, playerCount)
 		}
 		if *scrapeStats || runDefaultScraping {
-			log.Printf("⏱  Stats scraped in:   %s", statDuration)
+			log.Printf("⏱  Stats scraped in:   %s (Total records: %d)", statDuration, statCount)
 		}
 		log.Println("------------------------------------------------")
 		return
@@ -180,6 +186,43 @@ func main() {
 	fmt.Println("GridironGo - Fantasy Football CLI App")
 	fmt.Println("Starting the application...")
 	// Here you would normally start your TUI application
+}
+
+// Get count of records in the nfl_games table
+func getGameCount(ctx context.Context, db *data.DB) (int, error) {
+	games, err := db.Queries.GetAllGames(ctx)
+	if err != nil && err != sql.ErrNoRows {
+		return 0, err
+	}
+	return len(games), nil
+}
+
+// Get count of records in the nfl_teams table
+func getTeamCount(ctx context.Context, db *data.DB) (int, error) {
+	teams, err := db.Queries.GetAllNFLTeams(ctx)
+	if err != nil && err != sql.ErrNoRows {
+		return 0, err
+	}
+	return len(teams), nil
+}
+
+// Get count of records in the nfl_players table
+func getPlayerCount(ctx context.Context, db *data.DB) (int, error) {
+	players, err := db.Queries.GetAllNFLPlayers(ctx)
+	if err != nil && err != sql.ErrNoRows {
+		return 0, err
+	}
+	return len(players), nil
+}
+
+// Get count of records in the nfl_stats table
+func getStatCount(ctx context.Context, db *data.DB) (int, error) {
+	var count int
+	err := db.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM nfl_stats").Scan(&count)
+	if err != nil && err != sql.ErrNoRows {
+		return 0, err
+	}
+	return count, nil
 }
 
 // Parse comma-separated seasons string into slice of integers
