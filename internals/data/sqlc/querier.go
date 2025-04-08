@@ -12,9 +12,11 @@ import (
 type Querier interface {
 	CreateGame(ctx context.Context, arg CreateGameParams) error
 	CreateNFLPlayer(ctx context.Context, arg CreateNFLPlayerParams) error
+	CreateNFLStat(ctx context.Context, arg CreateNFLStatParams) error
 	CreateNFLTeam(ctx context.Context, arg CreateNFLTeamParams) error
 	DeleteGame(ctx context.Context, eventID int64) error
 	DeleteNFLPlayer(ctx context.Context, playerID string) error
+	DeleteNFLStat(ctx context.Context, statID int64) error
 	DeleteNFLTeam(ctx context.Context, teamID string) error
 	GetActiveNFLPlayers(ctx context.Context) ([]*NflPlayer, error)
 	GetAllGames(ctx context.Context) ([]*NflGame, error)
@@ -24,16 +26,45 @@ type Querier interface {
 	GetGame(ctx context.Context, eventID int64) (*NflGame, error)
 	GetNFLPlayer(ctx context.Context, playerID string) (*NflPlayer, error)
 	GetNFLTeam(ctx context.Context, teamID string) (*NflTeam, error)
+	// Get the average of a specific stat type for a player
+	GetPlayerStatAverage(ctx context.Context, arg GetPlayerStatAverageParams) (sql.NullFloat64, error)
+	// Get all stats for a player in a specific game
+	GetPlayerStatsByGame(ctx context.Context, arg GetPlayerStatsByGameParams) ([]*GetPlayerStatsByGameRow, error)
+	// Get a player's stats for a specific week in a season
+	GetPlayerStatsByWeek(ctx context.Context, arg GetPlayerStatsByWeekParams) ([]*GetPlayerStatsByWeekRow, error)
+	// CORE AGGREGATION FUNCTIONS
+	// Get the total of a specific stat type for a player
+	GetPlayerTotalStatByType(ctx context.Context, arg GetPlayerTotalStatByTypeParams) (sql.NullFloat64, error)
+	// Get the total of a specific stat type for a player in a specific season
+	GetPlayerTotalStatByTypeForSeason(ctx context.Context, arg GetPlayerTotalStatByTypeForSeasonParams) (sql.NullFloat64, error)
+	// Get total stats for all players of a specific position in a season
+	GetPlayerTotalStatsByPosition(ctx context.Context, arg GetPlayerTotalStatsByPositionParams) ([]*GetPlayerTotalStatsByPositionRow, error)
+	// Get a player's total stats for each stat type in a season
+	GetPlayerTotalStatsBySeason(ctx context.Context, arg GetPlayerTotalStatsBySeasonParams) ([]*GetPlayerTotalStatsBySeasonRow, error)
+	// Get weekly stats of a specific type for a player in a season
+	GetPlayerWeeklyStatByType(ctx context.Context, arg GetPlayerWeeklyStatByTypeParams) ([]*GetPlayerWeeklyStatByTypeRow, error)
 	GetPlayersByPosition(ctx context.Context, position string) ([]*NflPlayer, error)
 	GetPlayersByTeam(ctx context.Context, teamID sql.NullString) ([]*NflPlayer, error)
+	GetStatsByCategory(ctx context.Context, category string) ([]*NflStat, error)
+	GetStatsByGame(ctx context.Context, gameID int64) ([]*NflStat, error)
+	GetStatsByGameAndPlayer(ctx context.Context, arg GetStatsByGameAndPlayerParams) ([]*NflStat, error)
+	GetStatsByPlayer(ctx context.Context, playerID string) ([]*NflStat, error)
+	GetStatsByStatType(ctx context.Context, statType string) ([]*NflStat, error)
+	GetStatsByTeam(ctx context.Context, teamID string) ([]*NflStat, error)
+	// Get team-level stats for a category
+	GetTeamStatsByCategory(ctx context.Context, arg GetTeamStatsByCategoryParams) ([]*GetTeamStatsByCategoryRow, error)
 	GetTeamsByConference(ctx context.Context, conference string) ([]*NflTeam, error)
 	GetTeamsByDivision(ctx context.Context, division string) ([]*NflTeam, error)
+	// Get top N players for a specific stat type in a season
+	GetTopPlayersByStat(ctx context.Context, arg GetTopPlayersByStatParams) ([]*GetTopPlayersByStatRow, error)
 	SearchPlayers(ctx context.Context, arg SearchPlayersParams) ([]*NflPlayer, error)
 	UpdateGame(ctx context.Context, arg UpdateGameParams) error
 	UpdateNFLPlayer(ctx context.Context, arg UpdateNFLPlayerParams) error
+	UpdateNFLStat(ctx context.Context, arg UpdateNFLStatParams) error
 	UpdateNFLTeam(ctx context.Context, arg UpdateNFLTeamParams) error
 	UpsertGame(ctx context.Context, arg UpsertGameParams) error
 	UpsertNFLPlayer(ctx context.Context, arg UpsertNFLPlayerParams) error
+	UpsertNFLStat(ctx context.Context, arg UpsertNFLStatParams) error
 }
 
 var _ Querier = (*Queries)(nil)

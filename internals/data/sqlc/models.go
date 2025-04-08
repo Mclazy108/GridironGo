@@ -39,6 +39,16 @@ type NflPlayer struct {
 	ImageUrl   sql.NullString `json:"image_url"`
 }
 
+type NflStat struct {
+	StatID    int64   `json:"stat_id"`
+	GameID    int64   `json:"game_id"`
+	PlayerID  string  `json:"player_id"`
+	TeamID    string  `json:"team_id"`
+	Category  string  `json:"category"`
+	StatType  string  `json:"stat_type"`
+	StatValue float64 `json:"stat_value"`
+}
+
 type NflTeam struct {
 	TeamID         string         `json:"team_id"`
 	DisplayName    string         `json:"display_name"`

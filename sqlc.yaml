@@ -5,10 +5,10 @@ sql:
       - "internals/data/queries/players.sql"
       - "internals/data/queries/teams.sql"
       #- "internals/data/queries/league.sql"
-      #- "internals/data/queries/season.sql"
       #- "internals/data/queries/draft.sql"
       #- "internals/data/queries/score.sql"
       - "internals/data/queries/games.sql"
+      - "internals/data/queries/stats.sql"
     engine: "sqlite"
     gen:
       go:
