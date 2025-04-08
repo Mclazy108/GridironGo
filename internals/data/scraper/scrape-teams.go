@@ -195,67 +195,84 @@ func (s *TeamScraper) ScrapeNFLTeams(ctx context.Context) error {
 	return nil
 }
 
-// fetchTeamList fetches the list of NFL teams from the ESPN API
 func (s *TeamScraper) fetchTeamList(ctx context.Context) ([]TeamItem, error) {
-	// Construct the API URL
-	url := "https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/teams"
+	var allTeams []TeamItem
+	pageNum := 1
+	hasMorePages := true
 
-	// Create a new request with context
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
+	for hasMorePages {
+		// Construct the API URL with page parameter
+		url := fmt.Sprintf("https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/teams?page=%d", pageNum)
 
-	// Send HTTP GET request
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		// Check if the error was due to context cancellation
-		if ctx.Err() != nil {
-			return nil, fmt.Errorf("request cancelled: %w", ctx.Err())
+		// Create a new request with context
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
 		}
-		return nil, fmt.Errorf("HTTP request failed: %w", err)
-	}
-	defer resp.Body.Close()
 
-	// Check response status
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API returned non-OK status: %d", resp.StatusCode)
-	}
+		// Send HTTP GET request
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			// Check if the error was due to context cancellation
+			if ctx.Err() != nil {
+				return nil, fmt.Errorf("request cancelled: %w", ctx.Err())
+			}
+			return nil, fmt.Errorf("HTTP request failed: %w", err)
+		}
+		defer resp.Body.Close()
 
-	// Parse the JSON response
-	var teamListResponse TeamListResponse
-	err = json.NewDecoder(resp.Body).Decode(&teamListResponse)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode JSON response: %w", err)
-	}
+		// Check response status
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("API returned non-OK status: %d", resp.StatusCode)
+		}
 
-	// Process the items to extract team IDs from URLs
-	var teams []TeamItem
-	for _, item := range teamListResponse.Items {
-		// The $ref URL typically has the format ".../teams/{team_id}"
-		// Extract the team ID from the reference URL if it's not directly available
-		teamID := item.ID
-		if teamID == "" && item.Ref != "" {
-			parts := strings.Split(item.Ref, "/")
-			if len(parts) > 0 {
-				teamID = parts[len(parts)-1] // Get the last part of the URL
+		// Parse the JSON response
+		var teamListResponse TeamListResponse
+		err = json.NewDecoder(resp.Body).Decode(&teamListResponse)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode JSON response: %w", err)
+		}
+
+		// Process the items to extract team IDs from URLs
+		for _, item := range teamListResponse.Items {
+			// The $ref URL typically has the format ".../teams/{team_id}"
+			// Extract the team ID from the reference URL if it's not directly available
+			teamID := item.ID
+			if teamID == "" && item.Ref != "" {
+				parts := strings.Split(item.Ref, "/")
+				if len(parts) > 0 {
+					teamID = parts[len(parts)-1] // Get the last part of the URL
+				}
+			}
+
+			// Clean up the team ID - remove any query parameters
+			if teamID != "" {
+				// Split on ? and take just the first part
+				cleanID := strings.Split(teamID, "?")[0]
+				allTeams = append(allTeams, TeamItem{
+					Ref: item.Ref,
+					ID:  cleanID,
+				})
+			} else {
+				log.Printf("Warning: Could not extract team ID from reference: %s", item.Ref)
 			}
 		}
 
-		// Clean up the team ID - remove any query parameters
-		if teamID != "" {
-			// Split on ? and take just the first part
-			cleanID := strings.Split(teamID, "?")[0]
-			teams = append(teams, TeamItem{
-				Ref: item.Ref,
-				ID:  cleanID,
-			})
+		// Check if there are more pages - if no items or empty items, we're done
+		if len(teamListResponse.Items) == 0 {
+			hasMorePages = false
 		} else {
-			log.Printf("Warning: Could not extract team ID from reference: %s", item.Ref)
+			// Increment page number for next request
+			pageNum++
+
+			// Add some debug logging
+			log.Printf("Fetched page %d, found %d teams, total so far: %d",
+				pageNum-1, len(teamListResponse.Items), len(allTeams))
 		}
 	}
 
-	return teams, nil
+	log.Printf("Total teams found across all pages: %d", len(allTeams))
+	return allTeams, nil
 }
 
 // fetchTeamDetails fetches detailed information for a specific team

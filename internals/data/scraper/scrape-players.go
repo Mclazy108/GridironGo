@@ -130,7 +130,7 @@ func (s *PlayerScraper) ScrapeNFLPlayers(ctx context.Context) error {
 	teamChan := make(chan *sqlc.NflTeam, len(teams))
 
 	// Number of worker goroutines to process teams
-	numWorkers := 25
+	numWorkers := 32
 	log.Printf("Starting %d team worker goroutines", numWorkers)
 
 	// Launch worker goroutines
