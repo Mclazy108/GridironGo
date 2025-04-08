@@ -49,6 +49,45 @@ func (q *Queries) DeleteNFLStat(ctx context.Context, statID int64) error {
 	return err
 }
 
+const getGamesBySeason = `-- name: GetGamesBySeason :many
+SELECT event_id, date, name, short_name, season, week, away_team, home_team FROM nfl_games
+WHERE season = ?
+ORDER BY week, date
+`
+
+// Get all games for a specific season
+func (q *Queries) GetGamesBySeason(ctx context.Context, season int64) ([]*NflGame, error) {
+	rows, err := q.query(ctx, q.getGamesBySeasonStmt, getGamesBySeason, season)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []*NflGame{}
+	for rows.Next() {
+		var i NflGame
+		if err := rows.Scan(
+			&i.EventID,
+			&i.Date,
+			&i.Name,
+			&i.ShortName,
+			&i.Season,
+			&i.Week,
+			&i.AwayTeam,
+			&i.HomeTeam,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getPlayerStatAverage = `-- name: GetPlayerStatAverage :one
 SELECT 
   AVG(stat_value) as avg_value

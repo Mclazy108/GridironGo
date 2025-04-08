@@ -114,8 +114,7 @@ func (s *NFLScraper) ScrapeNFLGames(ctx context.Context, seasons []int) error {
 	log.Println("Press Ctrl+C to cancel the scraping process gracefully")
 
 	// Create a rate limiter to avoid overwhelming the API
-	// Limit to 10 requests per second (adjust as needed)
-	limiter := rate.NewLimiter(10, 1)
+	limiter := rate.NewLimiter(800, 1)
 
 	// Create a wait group to wait for all goroutines to finish
 	var wg sync.WaitGroup
@@ -347,4 +346,3 @@ func extractTeams(gameName string) (string, string) {
 	log.Printf("Failed to extract teams from game name: %s", gameName)
 	return "", ""
 }
-

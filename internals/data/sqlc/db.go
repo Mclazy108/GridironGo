@@ -66,6 +66,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getGameStmt, err = db.PrepareContext(ctx, getGame); err != nil {
 		return nil, fmt.Errorf("error preparing query GetGame: %w", err)
 	}
+	if q.getGamesBySeasonStmt, err = db.PrepareContext(ctx, getGamesBySeason); err != nil {
+		return nil, fmt.Errorf("error preparing query GetGamesBySeason: %w", err)
+	}
 	if q.getNFLPlayerStmt, err = db.PrepareContext(ctx, getNFLPlayer); err != nil {
 		return nil, fmt.Errorf("error preparing query GetNFLPlayer: %w", err)
 	}
@@ -229,6 +232,11 @@ func (q *Queries) Close() error {
 	if q.getGameStmt != nil {
 		if cerr := q.getGameStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getGameStmt: %w", cerr)
+		}
+	}
+	if q.getGamesBySeasonStmt != nil {
+		if cerr := q.getGamesBySeasonStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getGamesBySeasonStmt: %w", cerr)
 		}
 	}
 	if q.getNFLPlayerStmt != nil {
@@ -434,6 +442,7 @@ type Queries struct {
 	getAllNFLPlayersStmt                  *sql.Stmt
 	getAllNFLTeamsStmt                    *sql.Stmt
 	getGameStmt                           *sql.Stmt
+	getGamesBySeasonStmt                  *sql.Stmt
 	getNFLPlayerStmt                      *sql.Stmt
 	getNFLTeamStmt                        *sql.Stmt
 	getPlayerStatAverageStmt              *sql.Stmt
@@ -484,6 +493,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getAllNFLPlayersStmt:                  q.getAllNFLPlayersStmt,
 		getAllNFLTeamsStmt:                    q.getAllNFLTeamsStmt,
 		getGameStmt:                           q.getGameStmt,
+		getGamesBySeasonStmt:                  q.getGamesBySeasonStmt,
 		getNFLPlayerStmt:                      q.getNFLPlayerStmt,
 		getNFLTeamStmt:                        q.getNFLTeamStmt,
 		getPlayerStatAverageStmt:              q.getPlayerStatAverageStmt,

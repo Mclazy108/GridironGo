@@ -66,4 +66,5 @@ CREATE TABLE nfl_stats (
 );
 
 CREATE INDEX idx_nfl_stats_game_player ON nfl_stats (game_id, player_id);
+CREATE UNIQUE INDEX idx_nfl_stats_unique_stat ON nfl_stats(game_id, player_id, team_id, category, stat_type);
 

@@ -5,6 +5,12 @@ INSERT INTO nfl_stats (
   ?, ?, ?, ?, ?, ?
 );
 
+-- name: GetGamesBySeason :many
+-- Get all games for a specific season
+SELECT * FROM nfl_games
+WHERE season = ?
+ORDER BY week, date;
+
 -- name: GetStatsByGame :many
 SELECT * FROM nfl_stats
 WHERE game_id = ?
@@ -204,3 +210,4 @@ GROUP BY
   s.stat_type
 ORDER BY 
   s.stat_type;
+

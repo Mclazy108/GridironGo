@@ -20,6 +20,7 @@ func main() {
 	scrapeGames := flag.Bool("scrape-games", false, "Scrape NFL game data for seasons 2022-2024")
 	scrapeTeams := flag.Bool("scrape-teams", false, "Scrape NFL team data")
 	scrapePlayers := flag.Bool("scrape-players", false, "Scrape NFL player data")
+	scrapeStats := flag.Bool("scrape-stats", false, "Scrape NFL game statistics")
 	dbPath := flag.String("db", "./GridironGo.db", "Path to SQLite database (default: ./GridironGo.db)")
 
 	// Add specific season flags
@@ -30,6 +31,7 @@ func main() {
 		gameDuration   time.Duration
 		teamDuration   time.Duration
 		playerDuration time.Duration
+		statDuration   time.Duration
 	)
 	// Parse flags
 	flag.Parse()
@@ -74,41 +76,88 @@ func main() {
 	}()
 
 	// Check if no specific scraping flags were provided
-	runDefaultScraping := !*scrapeGames && !*scrapeTeams && !*scrapePlayers && len(flag.Args()) == 0
+	runDefaultScraping := !*scrapeGames && !*scrapeTeams && !*scrapePlayers && !*scrapeStats && len(flag.Args()) == 0
 
-	// Run game scraping if explicitly requested or running default
-	if *scrapeGames || runDefaultScraping {
+	// If running default scraping, run them in the correct order
+	if runDefaultScraping {
+		// Run game scraping first
 		start := time.Now()
 		err := runGameScraper(ctx, db, *seasons)
 		gameDuration = time.Since(start)
 		if err != nil {
 			log.Printf("Error during game scraping: %v", err)
 		}
-	}
 
-	// Run team scraping if explicitly requested or running default
-	if *scrapeTeams || runDefaultScraping {
-		start := time.Now()
-		err := runTeamScraper(ctx, db)
+		// Run team scraping second
+		start = time.Now()
+		err = runTeamScraper(ctx, db)
 		teamDuration = time.Since(start)
 		if err != nil {
 			log.Printf("Error during team scraping: %v", err)
 		}
-	}
 
-	// Run player scraping if explicitly requested or running default
-	if *scrapePlayers || runDefaultScraping {
-		start := time.Now()
-		err := runPlayerScraper(ctx, db)
+		// Run player scraping third
+		start = time.Now()
+		err = runPlayerScraper(ctx, db)
 		playerDuration = time.Since(start)
 		if err != nil {
 			log.Printf("Error during player scraping: %v", err)
 		}
+
+		// Run stats scraping last
+		start = time.Now()
+		err = runStatScraper(ctx, db, *seasons)
+		statDuration = time.Since(start)
+		if err != nil {
+			log.Printf("Error during stat scraping: %v", err)
+		}
+	} else {
+		// Otherwise, run only the explicitly requested scrapers
+		// (in the correct order when multiple are selected)
+
+		// Run game scraping first if requested
+		if *scrapeGames {
+			start := time.Now()
+			err := runGameScraper(ctx, db, *seasons)
+			gameDuration = time.Since(start)
+			if err != nil {
+				log.Printf("Error during game scraping: %v", err)
+			}
+		}
+
+		// Run team scraping second if requested
+		if *scrapeTeams {
+			start := time.Now()
+			err := runTeamScraper(ctx, db)
+			teamDuration = time.Since(start)
+			if err != nil {
+				log.Printf("Error during team scraping: %v", err)
+			}
+		}
+
+		// Run player scraping third if requested
+		if *scrapePlayers {
+			start := time.Now()
+			err := runPlayerScraper(ctx, db)
+			playerDuration = time.Since(start)
+			if err != nil {
+				log.Printf("Error during player scraping: %v", err)
+			}
+		}
+
+		// Run stats scraping last if requested
+		if *scrapeStats {
+			start := time.Now()
+			err := runStatScraper(ctx, db, *seasons)
+			statDuration = time.Since(start)
+			if err != nil {
+				log.Printf("Error during stat scraping: %v", err)
+			}
+		}
 	}
 
 	// If specific scraping flags were provided or default scraping was run, exit
-	if *scrapeGames || *scrapeTeams || *scrapePlayers || runDefaultScraping {
-
+	if *scrapeGames || *scrapeTeams || *scrapePlayers || *scrapeStats || runDefaultScraping {
 		log.Println("------------------------------------------------")
 		log.Println("🏁 Scraping Summary:")
 		if *scrapeGames || runDefaultScraping {
@@ -119,6 +168,9 @@ func main() {
 		}
 		if *scrapePlayers || runDefaultScraping {
 			log.Printf("⏱  Players scraped in: %s", playerDuration)
+		}
+		if *scrapeStats || runDefaultScraping {
+			log.Printf("⏱  Stats scraped in:   %s", statDuration)
 		}
 		log.Println("------------------------------------------------")
 		return
@@ -286,6 +338,51 @@ func runPlayerScraper(ctx context.Context, db *data.DB) error {
 
 	// Report success
 	log.Println("NFL player data scraping completed successfully")
+	return nil
+}
+
+// runStatScraper handles the game statistics scraping process
+func runStatScraper(ctx context.Context, db *data.DB, seasonsStr string) error {
+	log.Println("Starting NFL game statistics scraping...")
+	log.Println("Press Ctrl+C for graceful cancellation")
+
+	seasons := parseSeasons(seasonsStr)
+	log.Printf("Will scrape statistics for seasons: %v", seasons)
+
+	statScraperInstance := scraper.NewStatScraper(db)
+
+	// Count stats before scraping
+	var statCount int
+	err := db.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM nfl_stats").Scan(&statCount)
+	if err != nil {
+		log.Printf("Warning: Could not get existing stats count: %v", err)
+	} else {
+		log.Printf("Found %d existing statistics in database before scraping", statCount)
+	}
+
+	// Perform scraping with cancellable context
+	err = statScraperInstance.ScrapeNFLGameStats(ctx, seasons)
+
+	// Check if the operation was cancelled by the user
+	if ctx.Err() != nil {
+		log.Println("Scraping was cancelled by the user")
+		return ctx.Err()
+	}
+
+	if err != nil {
+		return fmt.Errorf("error scraping NFL game statistics: %w", err)
+	}
+
+	// Count stats after scraping
+	err = db.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM nfl_stats").Scan(&statCount)
+	if err != nil {
+		log.Printf("Warning: Could not get updated stats count: %v", err)
+	} else {
+		log.Printf("Database now contains %d statistics after scraping", statCount)
+	}
+
+	// Report success
+	log.Println("NFL game statistics scraping completed successfully")
 	return nil
 }
 

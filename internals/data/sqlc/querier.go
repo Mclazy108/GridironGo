@@ -24,6 +24,8 @@ type Querier interface {
 	GetAllNFLPlayers(ctx context.Context) ([]*NflPlayer, error)
 	GetAllNFLTeams(ctx context.Context) ([]*NflTeam, error)
 	GetGame(ctx context.Context, eventID int64) (*NflGame, error)
+	// Get all games for a specific season
+	GetGamesBySeason(ctx context.Context, season int64) ([]*NflGame, error)
 	GetNFLPlayer(ctx context.Context, playerID string) (*NflPlayer, error)
 	GetNFLTeam(ctx context.Context, teamID string) (*NflTeam, error)
 	// Get the average of a specific stat type for a player
