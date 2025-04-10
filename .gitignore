@@ -5,3 +5,4 @@ planning.txt
 *.db-shm
 executables/
 scrape.log
+events_to_csv.go
