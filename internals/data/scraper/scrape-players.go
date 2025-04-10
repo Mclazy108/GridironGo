@@ -99,11 +99,12 @@ type ESPNPlayerResponse struct {
 type PlayerData struct {
 	PlayerID   string
 	TeamID     string
+	SeasonYear int
 	PlayerInfo *ESPNPlayerResponse
 }
 
 // ScrapeNFLPlayers fetches and stores NFL player data with team-based batching
-func (s *PlayerScraper) ScrapeNFLPlayers(ctx context.Context) error {
+func (s *PlayerScraper) ScrapeNFLPlayers(ctx context.Context, seasons []int) error {
 	log.Println("Starting NFL players scraping process...")
 
 	// First, get all teams from the database
@@ -112,7 +113,7 @@ func (s *PlayerScraper) ScrapeNFLPlayers(ctx context.Context) error {
 		return fmt.Errorf("failed to fetch NFL teams from database: %w", err)
 	}
 
-	log.Printf("Found %d teams. Will fetch player data from team rosters", len(teams))
+	log.Printf("Found %d teams. Will fetch player data from team rosters for seasons: %v", len(teams), seasons)
 
 	// Track total players for stats
 	var totalPlayers int32 = 0
@@ -120,14 +121,17 @@ func (s *PlayerScraper) ScrapeNFLPlayers(ctx context.Context) error {
 	var failedPlayers int32 = 0
 
 	// Create a rate limiter to avoid overwhelming the API
-	// Limit to 10 requests per second (adjust as needed)
 	limiter := rate.NewLimiter(2500, 1)
 
 	// Create a wait group to wait for all goroutines to finish
 	var wg sync.WaitGroup
 
-	// Create a channel to process teams
-	teamChan := make(chan *sqlc.NflTeam, len(teams))
+	// Create a channel for team-season combinations
+	type TeamSeason struct {
+		Team       *sqlc.NflTeam
+		SeasonYear int
+	}
+	teamSeasonChan := make(chan TeamSeason, len(teams)*len(seasons))
 
 	// Number of worker goroutines to process teams
 	numWorkers := 32
@@ -138,71 +142,128 @@ func (s *PlayerScraper) ScrapeNFLPlayers(ctx context.Context) error {
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
-			for team := range teamChan {
-				log.Printf("Worker %d: Processing team %s", workerID, team.DisplayName)
+			for teamSeason := range teamSeasonChan {
+				team := teamSeason.Team
+				seasonYear := teamSeason.SeasonYear
+
+				log.Printf("Worker %d: Processing team %s for season %d", workerID, team.DisplayName, seasonYear)
 
 				// Process the team roster as a batch
-				playersProcessed, err := s.processTeamRoster(ctx, *team, limiter)
+				playersProcessed, err := s.processTeamRoster(ctx, *team, seasonYear, limiter)
 
 				if err != nil {
-					log.Printf("Worker %d: Error processing team %s: %v",
-						workerID, team.DisplayName, err)
+					log.Printf("Worker %d: Error processing team %s for season %d: %v",
+						workerID, team.DisplayName, seasonYear, err)
 				} else {
-					log.Printf("Worker %d: Successfully processed %d players for team %s",
-						workerID, playersProcessed, team.DisplayName)
+					log.Printf("Worker %d: Successfully processed %d players for team %s in season %d",
+						workerID, playersProcessed, team.DisplayName, seasonYear)
 
 					// Increment processed teams counter
 					numProcessed := atomic.AddInt32(&processedTeams, 1)
-					totalPlayers := atomic.AddInt32(&totalPlayers, int32(playersProcessed))
+					totalPlayersCount := atomic.AddInt32(&totalPlayers, int32(playersProcessed))
 
-					log.Printf("Progress: %d/%d teams processed, %d total players",
-						numProcessed, len(teams), totalPlayers)
+					log.Printf("Progress: %d/%d team-seasons processed, %d total players",
+						numProcessed, len(teams)*len(seasons), totalPlayersCount)
 				}
 			}
 			log.Printf("Worker %d finished", workerID)
 		}(i)
 	}
 
-	// Send teams to workers
-	for i := range teams {
-		teamChan <- teams[i]
+	// Send team-season combinations to workers
+	for _, season := range seasons {
+		for i := range teams {
+			teamSeasonChan <- TeamSeason{
+				Team:       teams[i],
+				SeasonYear: season,
+			}
+		}
 	}
 
-	// Close the team channel when done
-	close(teamChan)
+	// Close the team-season channel when done
+	close(teamSeasonChan)
 
 	// Wait for all team workers to finish
 	log.Println("Waiting for all team workers to finish...")
 	wg.Wait()
 
-	log.Printf("Processed %d teams with %d total players (%d failed)",
-		len(teams), totalPlayers, failedPlayers)
+	log.Printf("Processed %d team-seasons with %d total players (%d failed)",
+		len(teams)*len(seasons), totalPlayers, failedPlayers)
 	log.Println("NFL players scraping completed")
 	return nil
 }
 
-func insertNFLPlayersBulk(ctx context.Context, tx *sql.Tx, players []sqlc.UpsertNFLPlayerParams) error {
+// insertNFLPlayersBulk inserts or updates players in the nfl_players table
+func insertNFLPlayersBulk(ctx context.Context, tx *sql.Tx, players []PlayerData) error {
 	if len(players) == 0 {
 		return nil
 	}
 
-	// Build query
+	// First prepare to gather unique players for the base table
+	playerMap := make(map[string]PlayerData)
+
+	// Use the most recent data for each player
+	for _, p := range players {
+		existing, ok := playerMap[p.PlayerID]
+		if !ok || p.SeasonYear > existing.SeasonYear {
+			playerMap[p.PlayerID] = p
+		}
+	}
+
+	// Build query for nfl_players table
 	query := `INSERT INTO nfl_players (
 		player_id, first_name, last_name, full_name, position, team_id,
 		jersey, height, weight, active, college, experience,
 		draft_year, draft_round, draft_pick, status, image_url
 	) VALUES `
 
-	// Collect value placeholders like (?, ?, ?, ...), (?, ?, ?, ...), ...
-	valueStrings := make([]string, 0, len(players))
-	valueArgs := make([]interface{}, 0, len(players)*17)
+	// Collect value placeholders
+	valueStrings := make([]string, 0, len(playerMap))
+	valueArgs := make([]interface{}, 0, len(playerMap)*17)
 
-	for _, p := range players {
+	for _, p := range playerMap {
+		playerInfo := p.PlayerInfo
 		valueStrings = append(valueStrings, "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+
+		// Get image URL
+		imageURL := playerInfo.HeadshotImgURL
+		if imageURL == "" {
+			imageURL = playerInfo.HeadshotImgHref
+		}
+		if imageURL == "" && playerInfo.Headshot.Href != "" {
+			imageURL = playerInfo.Headshot.Href
+		}
+
+		// Get experience value
+		experienceValue := 0
+		if playerInfo.Experience.Years > 0 {
+			experienceValue = playerInfo.Experience.Years
+		}
+
+		// Get status value
+		statusValue := ""
+		if playerInfo.Status.Name != "" {
+			statusValue = playerInfo.Status.Name
+		}
+
 		valueArgs = append(valueArgs,
-			p.PlayerID, p.FirstName, p.LastName, p.FullName, p.Position,
-			p.TeamID, p.Jersey, p.Height, p.Weight, p.Active, p.College,
-			p.Experience, p.DraftYear, p.DraftRound, p.DraftPick, p.Status, p.ImageUrl,
+			p.PlayerID,
+			playerInfo.FirstName,
+			playerInfo.LastName,
+			playerInfo.FullName,
+			playerInfo.Position.Abbreviation,
+			p.TeamID, // Current team
+			playerInfo.Jersey,
+			int(playerInfo.Height),
+			int(playerInfo.Weight),
+			playerInfo.Active,
+			playerInfo.College.Name,
+			experienceValue,
+			playerInfo.Draft.Year,
+			playerInfo.Draft.Round,
+			playerInfo.Draft.Selection,
+			statusValue,
+			imageURL,
 		)
 	}
 
@@ -225,14 +286,76 @@ func insertNFLPlayersBulk(ctx context.Context, tx *sql.Tx, players []sqlc.Upsert
 			status = excluded.status,
 			image_url = excluded.image_url`
 
-	// Prepare + exec
+	// Execute the query for nfl_players
 	_, err := tx.ExecContext(ctx, query, valueArgs...)
-	return err
+	if err != nil {
+		return fmt.Errorf("error inserting players: %w", err)
+	}
+
+	return nil
 }
 
-// processTeamRoster fetches and processes an entire team's roster in a single transaction
+// insertPlayerSeasonsBulk inserts or updates player seasons data
+func insertPlayerSeasonsBulk(ctx context.Context, tx *sql.Tx, players []PlayerData) error {
+	if len(players) == 0 {
+		return nil
+	}
 
-func (s *PlayerScraper) processTeamRoster(ctx context.Context, team sqlc.NflTeam, limiter *rate.Limiter) (int, error) {
+	// Build query for nfl_player_seasons table
+	query := `INSERT INTO nfl_player_seasons (
+		player_id, season_year, team_id, jersey, active, experience, status
+	) VALUES `
+
+	// Collect value placeholders
+	valueStrings := make([]string, 0, len(players))
+	valueArgs := make([]interface{}, 0, len(players)*7)
+
+	for _, p := range players {
+		playerInfo := p.PlayerInfo
+		valueStrings = append(valueStrings, "(?, ?, ?, ?, ?, ?, ?)")
+
+		// Get experience value
+		experienceValue := 0
+		if playerInfo.Experience.Years > 0 {
+			experienceValue = playerInfo.Experience.Years
+		}
+
+		// Get status value
+		statusValue := ""
+		if playerInfo.Status.Name != "" {
+			statusValue = playerInfo.Status.Name
+		}
+
+		valueArgs = append(valueArgs,
+			p.PlayerID,
+			p.SeasonYear,
+			p.TeamID,
+			playerInfo.Jersey,
+			playerInfo.Active,
+			experienceValue,
+			statusValue,
+		)
+	}
+
+	query += strings.Join(valueStrings, ",") +
+		` ON CONFLICT(player_id, season_year) DO UPDATE SET
+			team_id = excluded.team_id,
+			jersey = excluded.jersey,
+			active = excluded.active,
+			experience = excluded.experience,
+			status = excluded.status`
+
+	// Execute the query for nfl_player_seasons
+	_, err := tx.ExecContext(ctx, query, valueArgs...)
+	if err != nil {
+		return fmt.Errorf("error inserting player seasons: %w", err)
+	}
+
+	return nil
+}
+
+// processTeamRoster fetches and processes an entire team's roster for a specific season
+func (s *PlayerScraper) processTeamRoster(ctx context.Context, team sqlc.NflTeam, seasonYear int, limiter *rate.Limiter) (int, error) {
 	teamID := team.TeamID
 	teamName := team.DisplayName
 
@@ -240,12 +363,12 @@ func (s *PlayerScraper) processTeamRoster(ctx context.Context, team sqlc.NflTeam
 		return 0, fmt.Errorf("rate limiter error: %w", err)
 	}
 
-	playerIDs, err := s.fetchTeamRoster(ctx, teamID)
+	playerIDs, err := s.fetchTeamRoster(ctx, teamID, seasonYear, limiter)
 	if err != nil {
-		return 0, fmt.Errorf("error fetching roster for team %s: %w", teamName, err)
+		return 0, fmt.Errorf("error fetching roster for team %s in season %d: %w", teamName, seasonYear, err)
 	}
 
-	log.Printf("Found %d players on %s roster, fetching player details", len(playerIDs), teamName)
+	log.Printf("Found %d players on %s roster for season %d, fetching player details", len(playerIDs), teamName, seasonYear)
 
 	playerDataList := make([]PlayerData, 0, len(playerIDs))
 
@@ -255,7 +378,7 @@ func (s *PlayerScraper) processTeamRoster(ctx context.Context, team sqlc.NflTeam
 			continue
 		}
 
-		playerResponse, err := s.fetchPlayerDetails(ctx, playerID)
+		playerResponse, err := s.fetchPlayerDetails(ctx, playerID, limiter)
 		if err != nil {
 			log.Printf("Error fetching details for player ID %s: %v", playerID, err)
 			continue
@@ -269,91 +392,53 @@ func (s *PlayerScraper) processTeamRoster(ctx context.Context, team sqlc.NflTeam
 		playerDataList = append(playerDataList, PlayerData{
 			PlayerID:   playerID,
 			TeamID:     teamID,
+			SeasonYear: seasonYear,
 			PlayerInfo: playerResponse,
 		})
 	}
 
 	if len(playerDataList) == 0 {
-		log.Printf("No valid players found for team %s", teamName)
+		log.Printf("No valid players found for team %s in season %d", teamName, seasonYear)
 		return 0, nil
 	}
 
-	log.Printf("Processed details for %d players on %s roster, saving to database...", len(playerDataList), teamName)
+	log.Printf("Processed details for %d players on %s roster for season %d, saving to database...",
+		len(playerDataList), teamName, seasonYear)
 
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	// Construct bulk insert parameters
-	bulkParams := make([]sqlc.UpsertNFLPlayerParams, 0, len(playerDataList))
-
-	for _, playerData := range playerDataList {
-		playerResponse := playerData.PlayerInfo
-
-		imageURL := playerResponse.HeadshotImgURL
-		if imageURL == "" {
-			imageURL = playerResponse.HeadshotImgHref
-		}
-		if imageURL == "" && playerResponse.Headshot.Href != "" {
-			imageURL = playerResponse.Headshot.Href
-		}
-
-		statusValue := ""
-		if playerResponse.Status.Name != "" {
-			statusValue = playerResponse.Status.Name
-		}
-
-		experienceValue := 0
-		if playerResponse.Experience.Years > 0 {
-			experienceValue = playerResponse.Experience.Years
-		}
-
-		playerParams := sqlc.UpsertNFLPlayerParams{
-			PlayerID:   playerData.PlayerID,
-			FirstName:  playerResponse.FirstName,
-			LastName:   playerResponse.LastName,
-			FullName:   playerResponse.FullName,
-			Position:   playerResponse.Position.Abbreviation,
-			TeamID:     sql.NullString{String: playerData.TeamID, Valid: playerData.TeamID != ""},
-			Jersey:     sql.NullString{String: playerResponse.Jersey, Valid: playerResponse.Jersey != ""},
-			Height:     sql.NullInt64{Int64: int64(playerResponse.Height), Valid: playerResponse.Height > 0},
-			Weight:     sql.NullInt64{Int64: int64(playerResponse.Weight), Valid: playerResponse.Weight > 0},
-			Active:     playerResponse.Active,
-			College:    sql.NullString{String: playerResponse.College.Name, Valid: playerResponse.College.Name != ""},
-			Experience: sql.NullInt64{Int64: int64(experienceValue), Valid: experienceValue >= 0},
-			DraftYear:  sql.NullInt64{Int64: int64(playerResponse.Draft.Year), Valid: playerResponse.Draft.Year > 0},
-			DraftRound: sql.NullInt64{Int64: int64(playerResponse.Draft.Round), Valid: playerResponse.Draft.Round > 0},
-			DraftPick:  sql.NullInt64{Int64: int64(playerResponse.Draft.Selection), Valid: playerResponse.Draft.Selection > 0},
-			Status:     sql.NullString{String: statusValue, Valid: statusValue != ""},
-			ImageUrl:   sql.NullString{String: imageURL, Valid: imageURL != ""},
-		}
-
-		bulkParams = append(bulkParams, playerParams)
+	// First insert/update the base player records
+	err = insertNFLPlayersBulk(ctx, tx, playerDataList)
+	if err != nil {
+		_ = tx.Rollback()
+		return 0, fmt.Errorf("error inserting base player records: %w", err)
 	}
 
-	// Perform bulk insert
-	err = insertNFLPlayersBulk(ctx, tx, bulkParams)
+	// Then insert/update the player seasons records
+	err = insertPlayerSeasonsBulk(ctx, tx, playerDataList)
 	if err != nil {
-		log.Printf("Error inserting bulk players for team %s: %v", teamName, err)
 		_ = tx.Rollback()
-		return 0, err
+		return 0, fmt.Errorf("error inserting player seasons: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	log.Printf("Successfully saved %d/%d players for team %s to database",
-		len(bulkParams), len(playerDataList), teamName)
+	log.Printf("Successfully saved %d players for team %s in season %d to database",
+		len(playerDataList), teamName, seasonYear)
 
-	return len(bulkParams), nil
+	return len(playerDataList), nil
 }
 
-// fetchTeamRoster fetches the roster for a specific team
-func (s *PlayerScraper) fetchTeamRoster(ctx context.Context, teamID string) ([]string, error) {
-	// Construct the API URL for team roster
-	url := fmt.Sprintf("https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2024/teams/%s/athletes?limit=200", teamID)
+// fetchTeamRoster fetches the roster for a specific team and season
+func (s *PlayerScraper) fetchTeamRoster(ctx context.Context, teamID string, seasonYear int, limiter *rate.Limiter) ([]string, error) {
+	// Construct the API URL for team roster with the specific season
+	url := fmt.Sprintf("https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/%d/teams/%s/athletes?limit=200",
+		seasonYear, teamID)
 
 	// Create a new request with context
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -415,10 +500,15 @@ func (s *PlayerScraper) fetchTeamRoster(ctx context.Context, teamID string) ([]s
 }
 
 // fetchPlayerDetails fetches detailed information for a specific player
-func (s *PlayerScraper) fetchPlayerDetails(ctx context.Context, playerID string) (*ESPNPlayerResponse, error) {
+func (s *PlayerScraper) fetchPlayerDetails(ctx context.Context, playerID string, limiter *rate.Limiter) (*ESPNPlayerResponse, error) {
 	// Construct the API URL for player details
 	// Using the direct athlete endpoint from ESPN API
 	url := fmt.Sprintf("https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/athletes/%s", playerID)
+
+	// Wait for rate limiter
+	if err := limiter.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("rate limiter error: %w", err)
+	}
 
 	// Create a new request with context
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -454,3 +544,4 @@ func (s *PlayerScraper) fetchPlayerDetails(ctx context.Context, playerID string)
 
 	return &playerResponse, nil
 }
+

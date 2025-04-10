@@ -39,6 +39,16 @@ type NflPlayer struct {
 	ImageUrl   sql.NullString `json:"image_url"`
 }
 
+type NflPlayerSeason struct {
+	PlayerID   string         `json:"player_id"`
+	SeasonYear int64          `json:"season_year"`
+	TeamID     sql.NullString `json:"team_id"`
+	Jersey     sql.NullString `json:"jersey"`
+	Active     bool           `json:"active"`
+	Experience sql.NullInt64  `json:"experience"`
+	Status     sql.NullString `json:"status"`
+}
+
 type NflStat struct {
 	StatID    int64   `json:"stat_id"`
 	GameID    int64   `json:"game_id"`

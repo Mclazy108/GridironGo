@@ -84,4 +84,3 @@ INSERT INTO nfl_players (
   draft_pick = excluded.draft_pick,
   status = excluded.status,
   image_url = excluded.image_url;
-

@@ -98,7 +98,7 @@ func main() {
 
 		// Run player scraping third
 		start = time.Now()
-		err = runPlayerScraper(ctx, db)
+		err = runPlayerScraper(ctx, db, *seasons) // Pass seasons to player scraper
 		playerDuration = time.Since(start)
 		if err != nil {
 			log.Printf("Error during player scraping: %v", err)
@@ -138,7 +138,7 @@ func main() {
 		// Run player scraping third if requested
 		if *scrapePlayers {
 			start := time.Now()
-			err := runPlayerScraper(ctx, db)
+			err = runPlayerScraper(ctx, db, *seasons) // Pass seasons to player scraper
 			playerDuration = time.Since(start)
 			if err != nil {
 				log.Printf("Error during player scraping: %v", err)
@@ -162,6 +162,7 @@ func main() {
 		gameCount, _ := getGameCount(ctx, db)
 		teamCount, _ := getTeamCount(ctx, db)
 		playerCount, _ := getPlayerCount(ctx, db)
+		playerSeasonCount, _ := getPlayerSeasonCount(ctx, db)
 		statCount, _ := getStatCount(ctx, db)
 
 		log.Println("------------------------------------------------")
@@ -173,7 +174,8 @@ func main() {
 			log.Printf("⏱  Teams scraped in:   %s (Total records: %d)", teamDuration, teamCount)
 		}
 		if *scrapePlayers || runDefaultScraping {
-			log.Printf("⏱  Players scraped in: %s (Total records: %d)", playerDuration, playerCount)
+			log.Printf("⏱  Players scraped in: %s (Total players: %d, Total player-seasons: %d)",
+				playerDuration, playerCount, playerSeasonCount)
 		}
 		if *scrapeStats || runDefaultScraping {
 			log.Printf("⏱  Stats scraped in:   %s (Total records: %d)", statDuration, statCount)
@@ -190,29 +192,42 @@ func main() {
 
 // Get count of records in the nfl_games table
 func getGameCount(ctx context.Context, db *data.DB) (int, error) {
-	games, err := db.Queries.GetAllGames(ctx)
+	var count int
+	err := db.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM nfl_games").Scan(&count)
 	if err != nil && err != sql.ErrNoRows {
 		return 0, err
 	}
-	return len(games), nil
+	return count, nil
 }
 
 // Get count of records in the nfl_teams table
 func getTeamCount(ctx context.Context, db *data.DB) (int, error) {
-	teams, err := db.Queries.GetAllNFLTeams(ctx)
+	var count int
+	err := db.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM nfl_teams").Scan(&count)
 	if err != nil && err != sql.ErrNoRows {
 		return 0, err
 	}
-	return len(teams), nil
+	return count, nil
 }
 
 // Get count of records in the nfl_players table
 func getPlayerCount(ctx context.Context, db *data.DB) (int, error) {
-	players, err := db.Queries.GetAllNFLPlayers(ctx)
+	var count int
+	err := db.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM nfl_players").Scan(&count)
 	if err != nil && err != sql.ErrNoRows {
 		return 0, err
 	}
-	return len(players), nil
+	return count, nil
+}
+
+// Get count of records in the nfl_player_seasons table
+func getPlayerSeasonCount(ctx context.Context, db *data.DB) (int, error) {
+	var count int
+	err := db.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM nfl_player_seasons").Scan(&count)
+	if err != nil && err != sql.ErrNoRows {
+		return 0, err
+	}
+	return count, nil
 }
 
 // Get count of records in the nfl_stats table
@@ -269,11 +284,11 @@ func runGameScraper(ctx context.Context, db *data.DB, seasonsStr string) error {
 	scraperInstance := scraper.NewScraper(db)
 
 	// Count games before scraping
-	games, err := db.Queries.GetAllGames(ctx)
+	gameCount, err := getGameCount(ctx, db)
 	if err != nil {
 		log.Printf("Warning: Could not get existing game count: %v", err)
 	} else {
-		log.Printf("Found %d existing games in database before scraping", len(games))
+		log.Printf("Found %d existing games in database before scraping", gameCount)
 	}
 
 	// Perform scraping with cancellable context
@@ -290,11 +305,11 @@ func runGameScraper(ctx context.Context, db *data.DB, seasonsStr string) error {
 	}
 
 	// Count games after scraping
-	games, err = db.Queries.GetAllGames(ctx)
+	gameCount, err = getGameCount(ctx, db)
 	if err != nil {
 		log.Printf("Warning: Could not get updated game count: %v", err)
 	} else {
-		log.Printf("Database now contains %d games after scraping", len(games))
+		log.Printf("Database now contains %d games after scraping", gameCount)
 	}
 
 	// Report success
@@ -310,11 +325,11 @@ func runTeamScraper(ctx context.Context, db *data.DB) error {
 	teamScraperInstance := scraper.NewTeamScraper(db)
 
 	// Count teams before scraping
-	teams, err := db.Queries.GetAllNFLTeams(ctx)
+	teamCount, err := getTeamCount(ctx, db)
 	if err != nil {
 		log.Printf("Warning: Could not get existing team count: %v", err)
 	} else {
-		log.Printf("Found %d existing teams in database before scraping", len(teams))
+		log.Printf("Found %d existing teams in database before scraping", teamCount)
 	}
 
 	// Perform scraping with cancellable context
@@ -331,11 +346,11 @@ func runTeamScraper(ctx context.Context, db *data.DB) error {
 	}
 
 	// Count teams after scraping
-	teams, err = db.Queries.GetAllNFLTeams(ctx)
+	teamCount, err = getTeamCount(ctx, db)
 	if err != nil {
 		log.Printf("Warning: Could not get updated team count: %v", err)
 	} else {
-		log.Printf("Database now contains %d teams after scraping", len(teams))
+		log.Printf("Database now contains %d teams after scraping", teamCount)
 	}
 
 	// Report success
@@ -344,22 +359,34 @@ func runTeamScraper(ctx context.Context, db *data.DB) error {
 }
 
 // runPlayerScraper handles the player scraping process
-func runPlayerScraper(ctx context.Context, db *data.DB) error {
+func runPlayerScraper(ctx context.Context, db *data.DB, seasonsStr string) error {
 	log.Println("Starting NFL player data scraping...")
 	log.Println("Press Ctrl+C for graceful cancellation")
+
+	// Parse seasons
+	seasons := parseSeasons(seasonsStr)
+	log.Printf("Will scrape players for seasons: %v", seasons)
 
 	playerScraperInstance := scraper.NewPlayerScraper(db)
 
 	// Count players before scraping
-	players, err := db.Queries.GetAllNFLPlayers(ctx)
-	if err != nil && err != sql.ErrNoRows {
+	playerCount, err := getPlayerCount(ctx, db)
+	if err != nil {
 		log.Printf("Warning: Could not get existing player count: %v", err)
 	} else {
-		log.Printf("Found %d existing players in database before scraping", len(players))
+		log.Printf("Found %d existing players in database before scraping", playerCount)
 	}
 
-	// Perform scraping with cancellable context
-	err = playerScraperInstance.ScrapeNFLPlayers(ctx)
+	// Count player seasons before scraping
+	seasonCount, err := getPlayerSeasonCount(ctx, db)
+	if err != nil {
+		log.Printf("Warning: Could not get existing player season count: %v", err)
+	} else {
+		log.Printf("Found %d existing player-season records in database before scraping", seasonCount)
+	}
+
+	// Perform scraping with cancellable context and specified seasons
+	err = playerScraperInstance.ScrapeNFLPlayers(ctx, seasons)
 
 	// Check if the operation was cancelled by the user
 	if ctx.Err() != nil {
@@ -372,11 +399,19 @@ func runPlayerScraper(ctx context.Context, db *data.DB) error {
 	}
 
 	// Count players after scraping
-	players, err = db.Queries.GetAllNFLPlayers(ctx)
-	if err != nil && err != sql.ErrNoRows {
+	playerCount, err = getPlayerCount(ctx, db)
+	if err != nil {
 		log.Printf("Warning: Could not get updated player count: %v", err)
 	} else {
-		log.Printf("Database now contains %d players after scraping", len(players))
+		log.Printf("Database now contains %d unique players after scraping", playerCount)
+	}
+
+	// Count player seasons after scraping
+	seasonCount, err = getPlayerSeasonCount(ctx, db)
+	if err != nil {
+		log.Printf("Warning: Could not get updated player season count: %v", err)
+	} else {
+		log.Printf("Database now contains %d player-season records after scraping", seasonCount)
 	}
 
 	// Report success
@@ -395,8 +430,7 @@ func runStatScraper(ctx context.Context, db *data.DB, seasonsStr string) error {
 	statScraperInstance := scraper.NewStatScraper(db)
 
 	// Count stats before scraping
-	var statCount int
-	err := db.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM nfl_stats").Scan(&statCount)
+	statCount, err := getStatCount(ctx, db)
 	if err != nil {
 		log.Printf("Warning: Could not get existing stats count: %v", err)
 	} else {
@@ -417,7 +451,7 @@ func runStatScraper(ctx context.Context, db *data.DB, seasonsStr string) error {
 	}
 
 	// Count stats after scraping
-	err = db.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM nfl_stats").Scan(&statCount)
+	statCount, err = getStatCount(ctx, db)
 	if err != nil {
 		log.Printf("Warning: Could not get updated stats count: %v", err)
 	} else {

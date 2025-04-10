@@ -55,7 +55,6 @@ WHERE season = ?
 ORDER BY week, date
 `
 
-// Get all games for a specific season
 func (q *Queries) GetGamesBySeason(ctx context.Context, season int64) ([]*NflGame, error) {
 	rows, err := q.query(ctx, q.getGamesBySeasonStmt, getGamesBySeason, season)
 	if err != nil {
@@ -75,6 +74,58 @@ func (q *Queries) GetGamesBySeason(ctx context.Context, season int64) ([]*NflGam
 			&i.AwayTeam,
 			&i.HomeTeam,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getPlayerSeasonalStatsByType = `-- name: GetPlayerSeasonalStatsByType :many
+SELECT 
+  g.season,
+  SUM(s.stat_value) as total_value
+FROM 
+  nfl_stats s
+JOIN 
+  nfl_games g ON s.game_id = g.event_id
+JOIN
+  nfl_player_seasons ps ON s.player_id = ps.player_id AND g.season = ps.season_year
+WHERE 
+  s.player_id = ? AND s.stat_type = ?
+GROUP BY 
+  g.season
+ORDER BY 
+  g.season DESC
+`
+
+type GetPlayerSeasonalStatsByTypeParams struct {
+	PlayerID string `json:"player_id"`
+	StatType string `json:"stat_type"`
+}
+
+type GetPlayerSeasonalStatsByTypeRow struct {
+	Season     int64           `json:"season"`
+	TotalValue sql.NullFloat64 `json:"total_value"`
+}
+
+// Get seasonal stats for a player across multiple seasons (for comparison)
+func (q *Queries) GetPlayerSeasonalStatsByType(ctx context.Context, arg GetPlayerSeasonalStatsByTypeParams) ([]*GetPlayerSeasonalStatsByTypeRow, error) {
+	rows, err := q.query(ctx, q.getPlayerSeasonalStatsByTypeStmt, getPlayerSeasonalStatsByType, arg.PlayerID, arg.StatType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []*GetPlayerSeasonalStatsByTypeRow{}
+	for rows.Next() {
+		var i GetPlayerSeasonalStatsByTypeRow
+		if err := rows.Scan(&i.Season, &i.TotalValue); err != nil {
 			return nil, err
 		}
 		items = append(items, &i)
@@ -108,6 +159,70 @@ func (q *Queries) GetPlayerStatAverage(ctx context.Context, arg GetPlayerStatAve
 	var avg_value sql.NullFloat64
 	err := row.Scan(&avg_value)
 	return avg_value, err
+}
+
+const getPlayerStatsByCurrentTeam = `-- name: GetPlayerStatsByCurrentTeam :many
+SELECT 
+  p.player_id,
+  p.full_name,
+  p.position,
+  s.stat_type,
+  SUM(s.stat_value) as total_value
+FROM 
+  nfl_stats s
+JOIN 
+  nfl_players p ON s.player_id = p.player_id
+JOIN 
+  nfl_games g ON s.game_id = g.event_id
+WHERE 
+  p.team_id = ? AND g.season = ?
+GROUP BY 
+  p.player_id, p.full_name, p.position, s.stat_type
+ORDER BY 
+  p.position, s.stat_type, total_value DESC
+`
+
+type GetPlayerStatsByCurrentTeamParams struct {
+	TeamID sql.NullString `json:"team_id"`
+	Season int64          `json:"season"`
+}
+
+type GetPlayerStatsByCurrentTeamRow struct {
+	PlayerID   string          `json:"player_id"`
+	FullName   string          `json:"full_name"`
+	Position   string          `json:"position"`
+	StatType   string          `json:"stat_type"`
+	TotalValue sql.NullFloat64 `json:"total_value"`
+}
+
+// Get stats for players currently on a specific team
+func (q *Queries) GetPlayerStatsByCurrentTeam(ctx context.Context, arg GetPlayerStatsByCurrentTeamParams) ([]*GetPlayerStatsByCurrentTeamRow, error) {
+	rows, err := q.query(ctx, q.getPlayerStatsByCurrentTeamStmt, getPlayerStatsByCurrentTeam, arg.TeamID, arg.Season)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []*GetPlayerStatsByCurrentTeamRow{}
+	for rows.Next() {
+		var i GetPlayerStatsByCurrentTeamRow
+		if err := rows.Scan(
+			&i.PlayerID,
+			&i.FullName,
+			&i.Position,
+			&i.StatType,
+			&i.TotalValue,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getPlayerStatsByGame = `-- name: GetPlayerStatsByGame :many
@@ -145,6 +260,72 @@ func (q *Queries) GetPlayerStatsByGame(ctx context.Context, arg GetPlayerStatsBy
 	for rows.Next() {
 		var i GetPlayerStatsByGameRow
 		if err := rows.Scan(&i.Category, &i.StatType, &i.StatValue); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getPlayerStatsBySeasonTeam = `-- name: GetPlayerStatsBySeasonTeam :many
+SELECT 
+  p.player_id,
+  p.full_name,
+  p.position,
+  s.stat_type,
+  SUM(s.stat_value) as total_value
+FROM 
+  nfl_stats s
+JOIN 
+  nfl_players p ON s.player_id = p.player_id
+JOIN 
+  nfl_player_seasons ps ON s.player_id = ps.player_id
+JOIN 
+  nfl_games g ON s.game_id = g.event_id
+WHERE 
+  ps.team_id = ? AND ps.season_year = ? AND g.season = ps.season_year
+GROUP BY 
+  p.player_id, p.full_name, p.position, s.stat_type
+ORDER BY 
+  p.position, s.stat_type, total_value DESC
+`
+
+type GetPlayerStatsBySeasonTeamParams struct {
+	TeamID     sql.NullString `json:"team_id"`
+	SeasonYear int64          `json:"season_year"`
+}
+
+type GetPlayerStatsBySeasonTeamRow struct {
+	PlayerID   string          `json:"player_id"`
+	FullName   string          `json:"full_name"`
+	Position   string          `json:"position"`
+	StatType   string          `json:"stat_type"`
+	TotalValue sql.NullFloat64 `json:"total_value"`
+}
+
+// Get stats for players on a specific team in a specific season
+func (q *Queries) GetPlayerStatsBySeasonTeam(ctx context.Context, arg GetPlayerStatsBySeasonTeamParams) ([]*GetPlayerStatsBySeasonTeamRow, error) {
+	rows, err := q.query(ctx, q.getPlayerStatsBySeasonTeamStmt, getPlayerStatsBySeasonTeam, arg.TeamID, arg.SeasonYear)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []*GetPlayerStatsBySeasonTeamRow{}
+	for rows.Next() {
+		var i GetPlayerStatsBySeasonTeamRow
+		if err := rows.Scan(
+			&i.PlayerID,
+			&i.FullName,
+			&i.Position,
+			&i.StatType,
+			&i.TotalValue,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, &i)
@@ -647,7 +828,7 @@ func (q *Queries) GetStatsByTeam(ctx context.Context, teamID string) ([]*NflStat
 	return items, nil
 }
 
-const getTeamStatsByCategory = `-- name: GetTeamStatsByCategory :many
+const getTeamStatsBySeason = `-- name: GetTeamStatsBySeason :many
 SELECT 
   t.team_id,
   t.display_name,
@@ -668,12 +849,12 @@ ORDER BY
   s.stat_type, total_value DESC
 `
 
-type GetTeamStatsByCategoryParams struct {
+type GetTeamStatsBySeasonParams struct {
 	Category string `json:"category"`
 	Season   int64  `json:"season"`
 }
 
-type GetTeamStatsByCategoryRow struct {
+type GetTeamStatsBySeasonRow struct {
 	TeamID          string          `json:"team_id"`
 	DisplayName     string          `json:"display_name"`
 	StatType        string          `json:"stat_type"`
@@ -681,16 +862,16 @@ type GetTeamStatsByCategoryRow struct {
 	AvgValuePerGame sql.NullFloat64 `json:"avg_value_per_game"`
 }
 
-// Get team-level stats for a category
-func (q *Queries) GetTeamStatsByCategory(ctx context.Context, arg GetTeamStatsByCategoryParams) ([]*GetTeamStatsByCategoryRow, error) {
-	rows, err := q.query(ctx, q.getTeamStatsByCategoryStmt, getTeamStatsByCategory, arg.Category, arg.Season)
+// Get team-level stats for a specific season
+func (q *Queries) GetTeamStatsBySeason(ctx context.Context, arg GetTeamStatsBySeasonParams) ([]*GetTeamStatsBySeasonRow, error) {
+	rows, err := q.query(ctx, q.getTeamStatsBySeasonStmt, getTeamStatsBySeason, arg.Category, arg.Season)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []*GetTeamStatsByCategoryRow{}
+	items := []*GetTeamStatsBySeasonRow{}
 	for rows.Next() {
-		var i GetTeamStatsByCategoryRow
+		var i GetTeamStatsBySeasonRow
 		if err := rows.Scan(
 			&i.TeamID,
 			&i.DisplayName,
@@ -795,7 +976,7 @@ INSERT INTO nfl_stats (
   game_id, player_id, team_id, category, stat_type, stat_value
 ) VALUES (
   ?, ?, ?, ?, ?, ?
-) ON CONFLICT(stat_id) DO UPDATE SET
+) ON CONFLICT(game_id, player_id, team_id, category, stat_type) DO UPDATE SET
   stat_value = excluded.stat_value
 `
 

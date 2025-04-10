@@ -14,24 +14,36 @@ type Querier interface {
 	CreateNFLPlayer(ctx context.Context, arg CreateNFLPlayerParams) error
 	CreateNFLStat(ctx context.Context, arg CreateNFLStatParams) error
 	CreateNFLTeam(ctx context.Context, arg CreateNFLTeamParams) error
+	CreatePlayerSeason(ctx context.Context, arg CreatePlayerSeasonParams) error
 	DeleteGame(ctx context.Context, eventID int64) error
 	DeleteNFLPlayer(ctx context.Context, playerID string) error
 	DeleteNFLStat(ctx context.Context, statID int64) error
 	DeleteNFLTeam(ctx context.Context, teamID string) error
+	DeletePlayerSeason(ctx context.Context, arg DeletePlayerSeasonParams) error
 	GetActiveNFLPlayers(ctx context.Context) ([]*NflPlayer, error)
+	GetActivePlayerSeasonsByYear(ctx context.Context, seasonYear int64) ([]*NflPlayerSeason, error)
 	GetAllGames(ctx context.Context) ([]*NflGame, error)
 	GetAllGamesBySeasonAndWeek(ctx context.Context, arg GetAllGamesBySeasonAndWeekParams) ([]*NflGame, error)
 	GetAllNFLPlayers(ctx context.Context) ([]*NflPlayer, error)
 	GetAllNFLTeams(ctx context.Context) ([]*NflTeam, error)
+	GetAllPlayerSeasons(ctx context.Context) ([]*NflPlayerSeason, error)
 	GetGame(ctx context.Context, eventID int64) (*NflGame, error)
-	// Get all games for a specific season
 	GetGamesBySeason(ctx context.Context, season int64) ([]*NflGame, error)
 	GetNFLPlayer(ctx context.Context, playerID string) (*NflPlayer, error)
 	GetNFLTeam(ctx context.Context, teamID string) (*NflTeam, error)
+	GetPlayerSeason(ctx context.Context, arg GetPlayerSeasonParams) (*NflPlayerSeason, error)
+	// Get seasonal stats for a player across multiple seasons (for comparison)
+	GetPlayerSeasonalStatsByType(ctx context.Context, arg GetPlayerSeasonalStatsByTypeParams) ([]*GetPlayerSeasonalStatsByTypeRow, error)
+	GetPlayerSeasonsByTeam(ctx context.Context, arg GetPlayerSeasonsByTeamParams) ([]*NflPlayerSeason, error)
+	GetPlayerSeasonsByYear(ctx context.Context, seasonYear int64) ([]*NflPlayerSeason, error)
 	// Get the average of a specific stat type for a player
 	GetPlayerStatAverage(ctx context.Context, arg GetPlayerStatAverageParams) (sql.NullFloat64, error)
+	// Get stats for players currently on a specific team
+	GetPlayerStatsByCurrentTeam(ctx context.Context, arg GetPlayerStatsByCurrentTeamParams) ([]*GetPlayerStatsByCurrentTeamRow, error)
 	// Get all stats for a player in a specific game
 	GetPlayerStatsByGame(ctx context.Context, arg GetPlayerStatsByGameParams) ([]*GetPlayerStatsByGameRow, error)
+	// Get stats for players on a specific team in a specific season
+	GetPlayerStatsBySeasonTeam(ctx context.Context, arg GetPlayerStatsBySeasonTeamParams) ([]*GetPlayerStatsBySeasonTeamRow, error)
 	// Get a player's stats for a specific week in a season
 	GetPlayerStatsByWeek(ctx context.Context, arg GetPlayerStatsByWeekParams) ([]*GetPlayerStatsByWeekRow, error)
 	// CORE AGGREGATION FUNCTIONS
@@ -53,8 +65,8 @@ type Querier interface {
 	GetStatsByPlayer(ctx context.Context, playerID string) ([]*NflStat, error)
 	GetStatsByStatType(ctx context.Context, statType string) ([]*NflStat, error)
 	GetStatsByTeam(ctx context.Context, teamID string) ([]*NflStat, error)
-	// Get team-level stats for a category
-	GetTeamStatsByCategory(ctx context.Context, arg GetTeamStatsByCategoryParams) ([]*GetTeamStatsByCategoryRow, error)
+	// Get team-level stats for a specific season
+	GetTeamStatsBySeason(ctx context.Context, arg GetTeamStatsBySeasonParams) ([]*GetTeamStatsBySeasonRow, error)
 	GetTeamsByConference(ctx context.Context, conference string) ([]*NflTeam, error)
 	GetTeamsByDivision(ctx context.Context, division string) ([]*NflTeam, error)
 	// Get top N players for a specific stat type in a season
@@ -64,9 +76,11 @@ type Querier interface {
 	UpdateNFLPlayer(ctx context.Context, arg UpdateNFLPlayerParams) error
 	UpdateNFLStat(ctx context.Context, arg UpdateNFLStatParams) error
 	UpdateNFLTeam(ctx context.Context, arg UpdateNFLTeamParams) error
+	UpdatePlayerSeason(ctx context.Context, arg UpdatePlayerSeasonParams) error
 	UpsertGame(ctx context.Context, arg UpsertGameParams) error
 	UpsertNFLPlayer(ctx context.Context, arg UpsertNFLPlayerParams) error
 	UpsertNFLStat(ctx context.Context, arg UpsertNFLStatParams) error
+	UpsertPlayerSeason(ctx context.Context, arg UpsertPlayerSeasonParams) error
 }
 
 var _ Querier = (*Queries)(nil)

@@ -6,7 +6,6 @@ INSERT INTO nfl_stats (
 );
 
 -- name: GetGamesBySeason :many
--- Get all games for a specific season
 SELECT * FROM nfl_games
 WHERE season = ?
 ORDER BY week, date;
@@ -55,7 +54,7 @@ INSERT INTO nfl_stats (
   game_id, player_id, team_id, category, stat_type, stat_value
 ) VALUES (
   ?, ?, ?, ?, ?, ?
-) ON CONFLICT(stat_id) DO UPDATE SET
+) ON CONFLICT(game_id, player_id, team_id, category, stat_type) DO UPDATE SET
   stat_value = excluded.stat_value;
 
 -- CORE AGGREGATION FUNCTIONS
@@ -79,6 +78,24 @@ JOIN
   nfl_games g ON s.game_id = g.event_id
 WHERE 
   s.player_id = ? AND s.stat_type = ? AND g.season = ?;
+
+-- name: GetPlayerSeasonalStatsByType :many
+-- Get seasonal stats for a player across multiple seasons (for comparison)
+SELECT 
+  g.season,
+  SUM(s.stat_value) as total_value
+FROM 
+  nfl_stats s
+JOIN 
+  nfl_games g ON s.game_id = g.event_id
+JOIN
+  nfl_player_seasons ps ON s.player_id = ps.player_id AND g.season = ps.season_year
+WHERE 
+  s.player_id = ? AND s.stat_type = ?
+GROUP BY 
+  g.season
+ORDER BY 
+  g.season DESC;
 
 -- name: GetPlayerWeeklyStatByType :many
 -- Get weekly stats of a specific type for a player in a season
@@ -139,8 +156,8 @@ ORDER BY
   total_value DESC
 LIMIT ?;
 
--- name: GetTeamStatsByCategory :many
--- Get team-level stats for a category
+-- name: GetTeamStatsBySeason :many
+-- Get team-level stats for a specific season
 SELECT 
   t.team_id,
   t.display_name,
@@ -159,6 +176,50 @@ GROUP BY
   t.team_id, t.display_name, s.stat_type
 ORDER BY 
   s.stat_type, total_value DESC;
+
+-- name: GetPlayerStatsByCurrentTeam :many
+-- Get stats for players currently on a specific team
+SELECT 
+  p.player_id,
+  p.full_name,
+  p.position,
+  s.stat_type,
+  SUM(s.stat_value) as total_value
+FROM 
+  nfl_stats s
+JOIN 
+  nfl_players p ON s.player_id = p.player_id
+JOIN 
+  nfl_games g ON s.game_id = g.event_id
+WHERE 
+  p.team_id = ? AND g.season = ?
+GROUP BY 
+  p.player_id, p.full_name, p.position, s.stat_type
+ORDER BY 
+  p.position, s.stat_type, total_value DESC;
+
+-- name: GetPlayerStatsBySeasonTeam :many
+-- Get stats for players on a specific team in a specific season
+SELECT 
+  p.player_id,
+  p.full_name,
+  p.position,
+  s.stat_type,
+  SUM(s.stat_value) as total_value
+FROM 
+  nfl_stats s
+JOIN 
+  nfl_players p ON s.player_id = p.player_id
+JOIN 
+  nfl_player_seasons ps ON s.player_id = ps.player_id
+JOIN 
+  nfl_games g ON s.game_id = g.event_id
+WHERE 
+  ps.team_id = ? AND ps.season_year = ? AND g.season = ps.season_year
+GROUP BY 
+  p.player_id, p.full_name, p.position, s.stat_type
+ORDER BY 
+  p.position, s.stat_type, total_value DESC;
 
 -- name: GetPlayerTotalStatsByPosition :many
 -- Get total stats for all players of a specific position in a season
@@ -210,4 +271,3 @@ GROUP BY
   s.stat_type
 ORDER BY 
   s.stat_type;
-

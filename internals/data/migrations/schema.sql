@@ -52,6 +52,22 @@ CREATE INDEX idx_nfl_players_team ON nfl_players (team_id);
 CREATE INDEX idx_nfl_players_position ON nfl_players (position);
 CREATE INDEX idx_nfl_players_active ON nfl_players (active);
 
+CREATE TABLE nfl_player_seasons (
+    player_id TEXT NOT NULL,
+    season_year INTEGER NOT NULL,
+    team_id TEXT,
+    jersey TEXT,
+    active BOOLEAN NOT NULL,
+    experience INTEGER,
+    status TEXT,
+    PRIMARY KEY (player_id, season_year),
+    FOREIGN KEY (player_id) REFERENCES nfl_players(player_id),
+    FOREIGN KEY (team_id) REFERENCES nfl_teams(team_id)
+);
+
+CREATE INDEX idx_nfl_player_seasons_team ON nfl_player_seasons (team_id, season_year);
+CREATE INDEX idx_nfl_player_seasons_active ON nfl_player_seasons (active, season_year);
+
 CREATE TABLE nfl_stats (
     stat_id INTEGER PRIMARY KEY AUTOINCREMENT,
     game_id INTEGER NOT NULL,

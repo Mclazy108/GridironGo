@@ -9,6 +9,7 @@ sql:
       #- "internals/data/queries/score.sql"
       - "internals/data/queries/games.sql"
       - "internals/data/queries/stats.sql"
+      - "internals/data/queries/player_seasons.sql"
     engine: "sqlite"
     gen:
       go:

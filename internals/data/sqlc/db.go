@@ -36,6 +36,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.createNFLTeamStmt, err = db.PrepareContext(ctx, createNFLTeam); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateNFLTeam: %w", err)
 	}
+	if q.createPlayerSeasonStmt, err = db.PrepareContext(ctx, createPlayerSeason); err != nil {
+		return nil, fmt.Errorf("error preparing query CreatePlayerSeason: %w", err)
+	}
 	if q.deleteGameStmt, err = db.PrepareContext(ctx, deleteGame); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteGame: %w", err)
 	}
@@ -48,8 +51,14 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteNFLTeamStmt, err = db.PrepareContext(ctx, deleteNFLTeam); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteNFLTeam: %w", err)
 	}
+	if q.deletePlayerSeasonStmt, err = db.PrepareContext(ctx, deletePlayerSeason); err != nil {
+		return nil, fmt.Errorf("error preparing query DeletePlayerSeason: %w", err)
+	}
 	if q.getActiveNFLPlayersStmt, err = db.PrepareContext(ctx, getActiveNFLPlayers); err != nil {
 		return nil, fmt.Errorf("error preparing query GetActiveNFLPlayers: %w", err)
+	}
+	if q.getActivePlayerSeasonsByYearStmt, err = db.PrepareContext(ctx, getActivePlayerSeasonsByYear); err != nil {
+		return nil, fmt.Errorf("error preparing query GetActivePlayerSeasonsByYear: %w", err)
 	}
 	if q.getAllGamesStmt, err = db.PrepareContext(ctx, getAllGames); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAllGames: %w", err)
@@ -63,6 +72,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getAllNFLTeamsStmt, err = db.PrepareContext(ctx, getAllNFLTeams); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAllNFLTeams: %w", err)
 	}
+	if q.getAllPlayerSeasonsStmt, err = db.PrepareContext(ctx, getAllPlayerSeasons); err != nil {
+		return nil, fmt.Errorf("error preparing query GetAllPlayerSeasons: %w", err)
+	}
 	if q.getGameStmt, err = db.PrepareContext(ctx, getGame); err != nil {
 		return nil, fmt.Errorf("error preparing query GetGame: %w", err)
 	}
@@ -75,11 +87,29 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getNFLTeamStmt, err = db.PrepareContext(ctx, getNFLTeam); err != nil {
 		return nil, fmt.Errorf("error preparing query GetNFLTeam: %w", err)
 	}
+	if q.getPlayerSeasonStmt, err = db.PrepareContext(ctx, getPlayerSeason); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPlayerSeason: %w", err)
+	}
+	if q.getPlayerSeasonalStatsByTypeStmt, err = db.PrepareContext(ctx, getPlayerSeasonalStatsByType); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPlayerSeasonalStatsByType: %w", err)
+	}
+	if q.getPlayerSeasonsByTeamStmt, err = db.PrepareContext(ctx, getPlayerSeasonsByTeam); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPlayerSeasonsByTeam: %w", err)
+	}
+	if q.getPlayerSeasonsByYearStmt, err = db.PrepareContext(ctx, getPlayerSeasonsByYear); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPlayerSeasonsByYear: %w", err)
+	}
 	if q.getPlayerStatAverageStmt, err = db.PrepareContext(ctx, getPlayerStatAverage); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPlayerStatAverage: %w", err)
 	}
+	if q.getPlayerStatsByCurrentTeamStmt, err = db.PrepareContext(ctx, getPlayerStatsByCurrentTeam); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPlayerStatsByCurrentTeam: %w", err)
+	}
 	if q.getPlayerStatsByGameStmt, err = db.PrepareContext(ctx, getPlayerStatsByGame); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPlayerStatsByGame: %w", err)
+	}
+	if q.getPlayerStatsBySeasonTeamStmt, err = db.PrepareContext(ctx, getPlayerStatsBySeasonTeam); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPlayerStatsBySeasonTeam: %w", err)
 	}
 	if q.getPlayerStatsByWeekStmt, err = db.PrepareContext(ctx, getPlayerStatsByWeek); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPlayerStatsByWeek: %w", err)
@@ -123,8 +153,8 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getStatsByTeamStmt, err = db.PrepareContext(ctx, getStatsByTeam); err != nil {
 		return nil, fmt.Errorf("error preparing query GetStatsByTeam: %w", err)
 	}
-	if q.getTeamStatsByCategoryStmt, err = db.PrepareContext(ctx, getTeamStatsByCategory); err != nil {
-		return nil, fmt.Errorf("error preparing query GetTeamStatsByCategory: %w", err)
+	if q.getTeamStatsBySeasonStmt, err = db.PrepareContext(ctx, getTeamStatsBySeason); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTeamStatsBySeason: %w", err)
 	}
 	if q.getTeamsByConferenceStmt, err = db.PrepareContext(ctx, getTeamsByConference); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTeamsByConference: %w", err)
@@ -150,6 +180,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateNFLTeamStmt, err = db.PrepareContext(ctx, updateNFLTeam); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateNFLTeam: %w", err)
 	}
+	if q.updatePlayerSeasonStmt, err = db.PrepareContext(ctx, updatePlayerSeason); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdatePlayerSeason: %w", err)
+	}
 	if q.upsertGameStmt, err = db.PrepareContext(ctx, upsertGame); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertGame: %w", err)
 	}
@@ -158,6 +191,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.upsertNFLStatStmt, err = db.PrepareContext(ctx, upsertNFLStat); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertNFLStat: %w", err)
+	}
+	if q.upsertPlayerSeasonStmt, err = db.PrepareContext(ctx, upsertPlayerSeason); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertPlayerSeason: %w", err)
 	}
 	return &q, nil
 }
@@ -184,6 +220,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing createNFLTeamStmt: %w", cerr)
 		}
 	}
+	if q.createPlayerSeasonStmt != nil {
+		if cerr := q.createPlayerSeasonStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createPlayerSeasonStmt: %w", cerr)
+		}
+	}
 	if q.deleteGameStmt != nil {
 		if cerr := q.deleteGameStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteGameStmt: %w", cerr)
@@ -204,9 +245,19 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteNFLTeamStmt: %w", cerr)
 		}
 	}
+	if q.deletePlayerSeasonStmt != nil {
+		if cerr := q.deletePlayerSeasonStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deletePlayerSeasonStmt: %w", cerr)
+		}
+	}
 	if q.getActiveNFLPlayersStmt != nil {
 		if cerr := q.getActiveNFLPlayersStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getActiveNFLPlayersStmt: %w", cerr)
+		}
+	}
+	if q.getActivePlayerSeasonsByYearStmt != nil {
+		if cerr := q.getActivePlayerSeasonsByYearStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getActivePlayerSeasonsByYearStmt: %w", cerr)
 		}
 	}
 	if q.getAllGamesStmt != nil {
@@ -229,6 +280,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getAllNFLTeamsStmt: %w", cerr)
 		}
 	}
+	if q.getAllPlayerSeasonsStmt != nil {
+		if cerr := q.getAllPlayerSeasonsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getAllPlayerSeasonsStmt: %w", cerr)
+		}
+	}
 	if q.getGameStmt != nil {
 		if cerr := q.getGameStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getGameStmt: %w", cerr)
@@ -249,14 +305,44 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getNFLTeamStmt: %w", cerr)
 		}
 	}
+	if q.getPlayerSeasonStmt != nil {
+		if cerr := q.getPlayerSeasonStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPlayerSeasonStmt: %w", cerr)
+		}
+	}
+	if q.getPlayerSeasonalStatsByTypeStmt != nil {
+		if cerr := q.getPlayerSeasonalStatsByTypeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPlayerSeasonalStatsByTypeStmt: %w", cerr)
+		}
+	}
+	if q.getPlayerSeasonsByTeamStmt != nil {
+		if cerr := q.getPlayerSeasonsByTeamStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPlayerSeasonsByTeamStmt: %w", cerr)
+		}
+	}
+	if q.getPlayerSeasonsByYearStmt != nil {
+		if cerr := q.getPlayerSeasonsByYearStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPlayerSeasonsByYearStmt: %w", cerr)
+		}
+	}
 	if q.getPlayerStatAverageStmt != nil {
 		if cerr := q.getPlayerStatAverageStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getPlayerStatAverageStmt: %w", cerr)
 		}
 	}
+	if q.getPlayerStatsByCurrentTeamStmt != nil {
+		if cerr := q.getPlayerStatsByCurrentTeamStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPlayerStatsByCurrentTeamStmt: %w", cerr)
+		}
+	}
 	if q.getPlayerStatsByGameStmt != nil {
 		if cerr := q.getPlayerStatsByGameStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getPlayerStatsByGameStmt: %w", cerr)
+		}
+	}
+	if q.getPlayerStatsBySeasonTeamStmt != nil {
+		if cerr := q.getPlayerStatsBySeasonTeamStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPlayerStatsBySeasonTeamStmt: %w", cerr)
 		}
 	}
 	if q.getPlayerStatsByWeekStmt != nil {
@@ -329,9 +415,9 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getStatsByTeamStmt: %w", cerr)
 		}
 	}
-	if q.getTeamStatsByCategoryStmt != nil {
-		if cerr := q.getTeamStatsByCategoryStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getTeamStatsByCategoryStmt: %w", cerr)
+	if q.getTeamStatsBySeasonStmt != nil {
+		if cerr := q.getTeamStatsBySeasonStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTeamStatsBySeasonStmt: %w", cerr)
 		}
 	}
 	if q.getTeamsByConferenceStmt != nil {
@@ -374,6 +460,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateNFLTeamStmt: %w", cerr)
 		}
 	}
+	if q.updatePlayerSeasonStmt != nil {
+		if cerr := q.updatePlayerSeasonStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updatePlayerSeasonStmt: %w", cerr)
+		}
+	}
 	if q.upsertGameStmt != nil {
 		if cerr := q.upsertGameStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertGameStmt: %w", cerr)
@@ -387,6 +478,11 @@ func (q *Queries) Close() error {
 	if q.upsertNFLStatStmt != nil {
 		if cerr := q.upsertNFLStatStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertNFLStatStmt: %w", cerr)
+		}
+	}
+	if q.upsertPlayerSeasonStmt != nil {
+		if cerr := q.upsertPlayerSeasonStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertPlayerSeasonStmt: %w", cerr)
 		}
 	}
 	return err
@@ -432,21 +528,31 @@ type Queries struct {
 	createNFLPlayerStmt                   *sql.Stmt
 	createNFLStatStmt                     *sql.Stmt
 	createNFLTeamStmt                     *sql.Stmt
+	createPlayerSeasonStmt                *sql.Stmt
 	deleteGameStmt                        *sql.Stmt
 	deleteNFLPlayerStmt                   *sql.Stmt
 	deleteNFLStatStmt                     *sql.Stmt
 	deleteNFLTeamStmt                     *sql.Stmt
+	deletePlayerSeasonStmt                *sql.Stmt
 	getActiveNFLPlayersStmt               *sql.Stmt
+	getActivePlayerSeasonsByYearStmt      *sql.Stmt
 	getAllGamesStmt                       *sql.Stmt
 	getAllGamesBySeasonAndWeekStmt        *sql.Stmt
 	getAllNFLPlayersStmt                  *sql.Stmt
 	getAllNFLTeamsStmt                    *sql.Stmt
+	getAllPlayerSeasonsStmt               *sql.Stmt
 	getGameStmt                           *sql.Stmt
 	getGamesBySeasonStmt                  *sql.Stmt
 	getNFLPlayerStmt                      *sql.Stmt
 	getNFLTeamStmt                        *sql.Stmt
+	getPlayerSeasonStmt                   *sql.Stmt
+	getPlayerSeasonalStatsByTypeStmt      *sql.Stmt
+	getPlayerSeasonsByTeamStmt            *sql.Stmt
+	getPlayerSeasonsByYearStmt            *sql.Stmt
 	getPlayerStatAverageStmt              *sql.Stmt
+	getPlayerStatsByCurrentTeamStmt       *sql.Stmt
 	getPlayerStatsByGameStmt              *sql.Stmt
+	getPlayerStatsBySeasonTeamStmt        *sql.Stmt
 	getPlayerStatsByWeekStmt              *sql.Stmt
 	getPlayerTotalStatByTypeStmt          *sql.Stmt
 	getPlayerTotalStatByTypeForSeasonStmt *sql.Stmt
@@ -461,7 +567,7 @@ type Queries struct {
 	getStatsByPlayerStmt                  *sql.Stmt
 	getStatsByStatTypeStmt                *sql.Stmt
 	getStatsByTeamStmt                    *sql.Stmt
-	getTeamStatsByCategoryStmt            *sql.Stmt
+	getTeamStatsBySeasonStmt              *sql.Stmt
 	getTeamsByConferenceStmt              *sql.Stmt
 	getTeamsByDivisionStmt                *sql.Stmt
 	getTopPlayersByStatStmt               *sql.Stmt
@@ -470,9 +576,11 @@ type Queries struct {
 	updateNFLPlayerStmt                   *sql.Stmt
 	updateNFLStatStmt                     *sql.Stmt
 	updateNFLTeamStmt                     *sql.Stmt
+	updatePlayerSeasonStmt                *sql.Stmt
 	upsertGameStmt                        *sql.Stmt
 	upsertNFLPlayerStmt                   *sql.Stmt
 	upsertNFLStatStmt                     *sql.Stmt
+	upsertPlayerSeasonStmt                *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
@@ -483,21 +591,31 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		createNFLPlayerStmt:                   q.createNFLPlayerStmt,
 		createNFLStatStmt:                     q.createNFLStatStmt,
 		createNFLTeamStmt:                     q.createNFLTeamStmt,
+		createPlayerSeasonStmt:                q.createPlayerSeasonStmt,
 		deleteGameStmt:                        q.deleteGameStmt,
 		deleteNFLPlayerStmt:                   q.deleteNFLPlayerStmt,
 		deleteNFLStatStmt:                     q.deleteNFLStatStmt,
 		deleteNFLTeamStmt:                     q.deleteNFLTeamStmt,
+		deletePlayerSeasonStmt:                q.deletePlayerSeasonStmt,
 		getActiveNFLPlayersStmt:               q.getActiveNFLPlayersStmt,
+		getActivePlayerSeasonsByYearStmt:      q.getActivePlayerSeasonsByYearStmt,
 		getAllGamesStmt:                       q.getAllGamesStmt,
 		getAllGamesBySeasonAndWeekStmt:        q.getAllGamesBySeasonAndWeekStmt,
 		getAllNFLPlayersStmt:                  q.getAllNFLPlayersStmt,
 		getAllNFLTeamsStmt:                    q.getAllNFLTeamsStmt,
+		getAllPlayerSeasonsStmt:               q.getAllPlayerSeasonsStmt,
 		getGameStmt:                           q.getGameStmt,
 		getGamesBySeasonStmt:                  q.getGamesBySeasonStmt,
 		getNFLPlayerStmt:                      q.getNFLPlayerStmt,
 		getNFLTeamStmt:                        q.getNFLTeamStmt,
+		getPlayerSeasonStmt:                   q.getPlayerSeasonStmt,
+		getPlayerSeasonalStatsByTypeStmt:      q.getPlayerSeasonalStatsByTypeStmt,
+		getPlayerSeasonsByTeamStmt:            q.getPlayerSeasonsByTeamStmt,
+		getPlayerSeasonsByYearStmt:            q.getPlayerSeasonsByYearStmt,
 		getPlayerStatAverageStmt:              q.getPlayerStatAverageStmt,
+		getPlayerStatsByCurrentTeamStmt:       q.getPlayerStatsByCurrentTeamStmt,
 		getPlayerStatsByGameStmt:              q.getPlayerStatsByGameStmt,
+		getPlayerStatsBySeasonTeamStmt:        q.getPlayerStatsBySeasonTeamStmt,
 		getPlayerStatsByWeekStmt:              q.getPlayerStatsByWeekStmt,
 		getPlayerTotalStatByTypeStmt:          q.getPlayerTotalStatByTypeStmt,
 		getPlayerTotalStatByTypeForSeasonStmt: q.getPlayerTotalStatByTypeForSeasonStmt,
@@ -512,7 +630,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getStatsByPlayerStmt:                  q.getStatsByPlayerStmt,
 		getStatsByStatTypeStmt:                q.getStatsByStatTypeStmt,
 		getStatsByTeamStmt:                    q.getStatsByTeamStmt,
-		getTeamStatsByCategoryStmt:            q.getTeamStatsByCategoryStmt,
+		getTeamStatsBySeasonStmt:              q.getTeamStatsBySeasonStmt,
 		getTeamsByConferenceStmt:              q.getTeamsByConferenceStmt,
 		getTeamsByDivisionStmt:                q.getTeamsByDivisionStmt,
 		getTopPlayersByStatStmt:               q.getTopPlayersByStatStmt,
@@ -521,8 +639,10 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateNFLPlayerStmt:                   q.updateNFLPlayerStmt,
 		updateNFLStatStmt:                     q.updateNFLStatStmt,
 		updateNFLTeamStmt:                     q.updateNFLTeamStmt,
+		updatePlayerSeasonStmt:                q.updatePlayerSeasonStmt,
 		upsertGameStmt:                        q.upsertGameStmt,
 		upsertNFLPlayerStmt:                   q.upsertNFLPlayerStmt,
 		upsertNFLStatStmt:                     q.upsertNFLStatStmt,
+		upsertPlayerSeasonStmt:                q.upsertPlayerSeasonStmt,
 	}
 }
