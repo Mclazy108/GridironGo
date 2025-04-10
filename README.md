@@ -8,57 +8,53 @@ GridironGo is a Fantasy Football CLI app built in Go using the [Bubble Tea](http
 ## Project Structure
 ```
 .
-├── LICENSE                     		# Project license file
-├── README.md                   		# Project documentation and setup instructions
-├── build.sh                    		# Script to build executables for different platforms
-├── examples                    		# Directory with example code and API documentation
-│   └── api.csv                 		# CSV listing all available ESPN API endpoints with descriptions
-├── executables                 		# Directory for compiled binaries
-│   ├── GridironGo-linux        		# Linux executable
-│   ├── GridironGo-mac          		# macOS executable
-│   └── GridironGo-windows.exe  		# Windows executable
-├── go.mod                      		# Defines the module name and dependencies for the Go project
-├── go.sum                      		# Locks dependency versions to ensure reproducible builds
-├── internals                   		# Contains core application logic split into sub-packages
-│   ├── data                    		# Data layer for database operations and scraping
-│   │   ├── database.go         		# Handles SQLite database connections and queries
-│   │   ├── migrations          		# Directory for SQL migrations
-│   │   │   └── schema.sql      		# Database schema definition with tables and indexes
-│   │   ├── queries             		# Directory for SQL queries used by sqlc
-│   │   │   ├── games.sql       		# Game schedule queries
-│   │   │   ├── player_seasons.sql 		# Player season tracking queries
-│   │   │   ├── players.sql     		# Player-related queries (stats, fantasy points, searching)
-│   │   │   ├── stats.sql       		# Statistics and scoring system queries
-│   │   │   └── teams.sql       		# Team management queries (roster, standings, updates)
-│   │   ├── scraper             		# Data scrapers for NFL data
-│   │   │   ├── scrape-games.go 		# Scrapes NFL game schedules from ESPN API
-│   │   │   ├── scrape-players.go 		# Scrapes NFL player data from ESPN API
-│   │   │   ├── scrape-stats.go 		# Scrapes NFL player and game statistics from ESPN API
-│   │   │   └── scrape-teams.go 		# Scrapes NFL team data from ESPN API
-│   │   └── sqlc                		# Generated SQL code by sqlc
-│   │       ├── db.go           		# Database connection and query execution
-│   │       ├── games.sql.go    		# Generated code for game queries
-│   │       ├── models.go       		# Generated data models
+├── LICENSE                     	# Project license file
+├── README.md                   	# Project documentation and setup instructions
+├── build.sh                    	# Script to build executables for different platforms
+├── examples                    	# Directory with example code and API documentation
+│   └── api.csv                 	# CSV listing all available ESPN API endpoints with descriptions
+├── go.mod                      	# Defines the module name and dependencies for the Go project
+├── go.sum                      	# Locks dependency versions to ensure reproducible builds
+├── internals                   	# Contains core application logic split into sub-packages
+│   ├── data                    	# Data layer for database operations and scraping
+│   │   ├── database.go         	# Handles SQLite database connections and queries
+│   │   ├── migrations          	# Directory for SQL migrations
+│   │   │   └── schema.sql      	# Database schema definition with tables and indexes
+│   │   ├── queries             	# Directory for SQL queries used by sqlc
+│   │   │   ├── games.sql       	# Game schedule queries
+│   │   │   ├── player_seasons.sql 	# Player season tracking queries
+│   │   │   ├── players.sql     	# Player-related queries (stats, fantasy points, searching)
+│   │   │   ├── stats.sql       	# Statistics and scoring system queries
+│   │   │   └── teams.sql       	# Team management queries (roster, standings, updates)
+│   │   ├── scraper             	# Data scrapers for NFL data
+│   │   │   ├── scrape-games.go 	# Scrapes NFL game schedules from ESPN API
+│   │   │   ├── scrape-players.go 	# Scrapes NFL player data from ESPN API
+│   │   │   ├── scrape-stats.go 	# Scrapes NFL player and game statistics from ESPN API
+│   │   │   └── scrape-teams.go 	# Scrapes NFL team data from ESPN API
+│   │   └── sqlc                	# Generated SQL code by sqlc
+│   │       ├── db.go           	# Database connection and query execution
+│   │       ├── games.sql.go    	# Generated code for game queries
+│   │       ├── models.go       	# Generated data models
 │   │       ├── player_seasons.sql.go 	# Generated code for player seasons queries
-│   │       ├── players.sql.go  		# Generated code for player queries
-│   │       ├── querier.go      		# Interface defining all available queries
-│   │       ├── stats.sql.go    		# Generated code for statistics queries
-│   │       └── teams.sql.go    		# Generated code for team queries
-│   ├── league                  		# Fantasy league management
-│   │   ├── league.go           		# Manages fantasy league setup and operations
-│   │   ├── rules.go            		# Handles league rules including scoring and configurations
-│   │   ├── schedule.go         		# Generates and manages league schedules, including playoffs
-│   │   ├── team.go             		# Manages fantasy teams including bot teams and user team
-│   │   ├── draft.go            		# Handles the drafting logic and player selection process
-│   │   └── scoring.go          		# Implements fantasy football scoring rules and calculations
-│   └── tui                     		# Terminal User Interface components
-│       ├── league_menu.go      		# TUI logic for the fantasy league menu and its options
-│       ├── menu.go             		# Main TUI entry point with initial menu options
-│       ├── player_menu.go      		# TUI logic for viewing players and selecting them
-│       └── schedule_menu.go    		# TUI logic for viewing the real and fantasy schedules
-├── main.go                     		# Entry point for the application
-├── planning.txt                		# Project planning notes and roadmap
-└── sqlc.yaml                   		# Configuration file for sqlc code generation
+│   │       ├── players.sql.go  	# Generated code for player queries
+│   │       ├── querier.go      	# Interface defining all available queries
+│   │       ├── stats.sql.go    	# Generated code for statistics queries
+│   │       └── teams.sql.go    	# Generated code for team queries
+│   ├── league                  	# Fantasy league management
+│   │   ├── league.go           	# Manages fantasy league setup and operations
+│   │   ├── rules.go            	# Handles league rules including scoring and configurations
+│   │   ├── schedule.go         	# Generates and manages league schedules, including playoffs
+│   │   ├── team.go             	# Manages fantasy teams including bot teams and user team
+│   │   ├── draft.go            	# Handles the drafting logic and player selection process
+│   │   └── scoring.go          	# Implements fantasy football scoring rules and calculations
+│   └── tui                     	# Terminal User Interface components
+│       ├── league_menu.go      	# TUI logic for the fantasy league menu and its options
+│       ├── menu.go             	# Main TUI entry point with initial menu options
+│       ├── player_menu.go      	# TUI logic for viewing players and selecting them
+│       └── schedule_menu.go    	# TUI logic for viewing the real and fantasy schedules
+├── main.go                     	# Entry point for the application
+├── planning.txt                	# Project planning notes and roadmap
+└── sqlc.yaml                   	# Configuration file for sqlc code generation
 ```
 
 ---
