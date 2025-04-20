@@ -1,0 +1,20 @@
+Category,Stat Type,Points
+passing,passingYards,0.04 per yard
+passing,passingTouchdowns,4 per TD
+passing,interceptions,-2 per INT
+rushing,rushingYards,0.1 per yard
+rushing,rushingTouchdowns,6 per TD
+receiving,receivingYards,0.1 per yard
+receiving,receivingTouchdowns,6 per TD
+receiving,receptions,1 per reception (if PPR enabled)
+fumbles,fumblesLost,-2 per fumble lost
+defensive,sacks,1 per sack
+interceptions,interceptions,2 per INT
+defensive,defensiveTouchdowns,6 per TD
+defensive,passesDefended,1 per pass defended
+kickReturns,kickReturnYards,0.04 per yard
+kickReturns,kickReturnTouchdowns,6 per TD
+puntReturns,puntReturnYards,0.04 per yard
+puntReturns,puntReturnTouchdowns,6 per TD
+kicking,fieldGoalsMade/fieldGoalAttempts,"3 (0-39 yd), 4 (40-49 yd), 5 (50+ yd)"
+kicking,extraPointsMade/extraPointAttempts,1 per XP made
