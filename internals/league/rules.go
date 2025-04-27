@@ -3,7 +3,6 @@ package league
 import (
 	"encoding/json"
 	"fmt"
-	//"regexp"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 	"sort"
