@@ -3,7 +3,9 @@ package league
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
+	//"regexp"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 	"sort"
 	"strings"
 )
@@ -253,7 +255,7 @@ func (l *LeagueRules) ValidateRules() error {
 }
 
 // SetScoringRule sets or updates a specific scoring rule
-func (l *LeagueRules) SetScoringRule(category, statType string, value interface{}) error {
+func (l *LeagueRules) SetScoringRule(category, statType string, value any) error {
 	// Make sure the category exists
 	if _, ok := l.ScoringRules[category]; !ok {
 		l.ScoringRules[category] = make(map[string]ScoringRule)
@@ -329,8 +331,11 @@ func (l *LeagueRules) PrintScoringRules() string {
 	}
 	sort.Strings(categories)
 
+	// Create a title-casing object
+	caser := cases.Title(language.English)
+
 	for _, category := range categories {
-		output.WriteString(fmt.Sprintf("%s:\n", strings.Title(category)))
+		output.WriteString(fmt.Sprintf("%s:\n", caser.String(category)))
 		rules := l.ScoringRules[category]
 
 		// Sort stat types for consistent display
@@ -345,11 +350,11 @@ func (l *LeagueRules) PrintScoringRules() string {
 
 			switch rule.Type {
 			case PerUnit:
-				output.WriteString(fmt.Sprintf("  %s: %.2f points per unit\n", formatStatType(statType), rule.Value))
+				output.WriteString(fmt.Sprintf("  %s: %.2f points per unit\n", caser.String(statType), rule.Value))
 			case FixedUnit:
-				output.WriteString(fmt.Sprintf("  %s: %.2f points\n", formatStatType(statType), rule.Value))
+				output.WriteString(fmt.Sprintf("  %s: %.2f points\n", caser.String(statType), rule.Value))
 			case RangeBased:
-				output.WriteString(fmt.Sprintf("  %s:\n", formatStatType(statType)))
+				output.WriteString(fmt.Sprintf("  %s:\n", caser.String(statType)))
 
 				// Sort ranges for consistent display
 				ranges := make([]string, 0, len(rule.Ranges))
@@ -367,20 +372,6 @@ func (l *LeagueRules) PrintScoringRules() string {
 	}
 
 	return output.String()
-}
-
-// Helper function to make stat types more readable
-func formatStatType(statType string) string {
-	// Add spaces before capital letters
-	r := regexp.MustCompile(`([a-z])([A-Z])`)
-	formatted := r.ReplaceAllString(statType, "$1 $2")
-
-	// Capitalize first letter
-	if len(formatted) > 0 {
-		formatted = strings.ToUpper(formatted[:1]) + formatted[1:]
-	}
-
-	return formatted
 }
 
 // GetScoringCategories returns all available scoring categories
