@@ -17,14 +17,14 @@ import (
 
 func main() {
 	// Define command-line flags
-	scrapeGames := flag.Bool("scrape-games", false, "Scrape NFL game data for seasons 2022-2024")
+	scrapeGames := flag.Bool("scrape-games", false, "Scrape NFL game data for seasons 2022-2025")
 	scrapeTeams := flag.Bool("scrape-teams", false, "Scrape NFL team data")
 	scrapePlayers := flag.Bool("scrape-players", false, "Scrape NFL player data")
 	scrapeStats := flag.Bool("scrape-stats", false, "Scrape NFL game statistics")
 	dbPath := flag.String("db", "./GridironGo.db", "Path to SQLite database (default: ./GridironGo.db)")
 
 	// Add specific season flags
-	seasons := flag.String("seasons", "2022,2023,2024", "Comma-separated list of seasons to scrape games for")
+	seasons := flag.String("seasons", "2022,2023,2024,2025", "Comma-separated list of seasons to scrape games for")
 
 	// Track durations for summary
 	var (
@@ -265,9 +265,9 @@ func parseSeasons(seasonsStr string) []int {
 		seasonsInt = append(seasonsInt, currentNum)
 	}
 
-	// Default to 2022-2024 if no valid seasons were provided
+	// Default to 2022-2025 if no valid seasons were provided
 	if len(seasonsInt) == 0 {
-		return []int{2022, 2023, 2024}
+		return []int{2022, 2023, 2024, 2025}
 	}
 
 	return seasonsInt
@@ -462,4 +462,3 @@ func runStatScraper(ctx context.Context, db *data.DB, seasonsStr string) error {
 	log.Println("NFL game statistics scraping completed successfully")
 	return nil
 }
-
